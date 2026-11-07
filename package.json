@@ -1,0 +1,10 @@
+{
+  "name": "pedeai",
+  "version": "1.0.0",
+  "description": "Pedeaí - plataforma de delivery multi-lojas, sem dependências",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=22.5" },
+  "license": "UNLICENSED",
+  "private": true
+}
