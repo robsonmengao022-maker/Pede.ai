@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id, created_at);
 `);
 
 // ---------- Faixas de cobrança da plataforma (por faturamento mensal da loja) ----------
-const FEE_TIERS = { freeUpTo: 7000, midUpTo: 10000, midFee: 20, topFee: 100 };
+const FEE_TIERS = { freeUpTo: 7000, midUpTo: 10000, midFee: 69.9, topFee: 129.9 };
 function monthlyFee(revenue) {
   if (revenue > FEE_TIERS.midUpTo) return FEE_TIERS.topFee;
   if (revenue > FEE_TIERS.freeUpTo) return FEE_TIERS.midFee;
@@ -327,4 +327,4 @@ function receipt(store, o) {
   const items = JSON.parse(o.items_json || '[]');
   const when = new Date(o.created_at.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
   return `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Pedido ${esc(o.code)}</title>
-<style>@page
+<style>@
