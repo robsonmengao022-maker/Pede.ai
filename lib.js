@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS stores(
   delivery_fee REAL DEFAULT 0, min_order REAL DEFAULT 0, is_open INTEGER DEFAULT 1,
   lat REAL, lng REAL, km_fees TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS password_resets(store_id INTEGER PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, store_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, name TEXT NOT NULL, position INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, category_id INTEGER, name TEXT NOT NULL,

@@ -82,6 +82,12 @@ public/painel.html painel do lojista
 public/admin.html  painel do dono da plataforma
 ```
 
-## Entrega por km (tabela do lojista)
+## Recuperação de senha por código (e-mail)
 
-Cada loja preenche a taxa de cada km (1 a 15 km) em **Configurações**. A distância é em linha reta, do endereço da loja ao do cliente, calculada com dados do OpenStreetMap (gratuito, com limite de uso). Deixe em branco os km em que a loja não entrega. Pra variável `GEOCODER_URL` você pode trocar o serviço de mapa no futuro.
+O lojista esquece a senha, toca em **Esqueci minha senha** no painel, recebe um código de 6 números no e-mail e troca a senha. O código vale 15 minutos e some depois de 5 tentativas erradas.
+
+Usa o **Brevo** (plano gratuito, 300 e-mails por dia). Configure no Render, em **Environment Variables**:
+- `BREVO_API_KEY`: chave de API criada no painel do Brevo (**SMTP & API → API Keys**)
+- `MAIL_FROM`: e-mail que vai aparecer como remetente. Precisa estar verificado no Brevo (**Senders**).
+
+Sem essas duas variáveis, a recuperação fica desligada e o painel avisa.

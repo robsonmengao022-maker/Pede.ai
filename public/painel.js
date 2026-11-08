@@ -21,6 +21,27 @@ async function api(path, method = 'GET', body) {
 }
 const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
+function showReset(step = 'mail', email = '') {
+  const enviar = async () => {
+    try { await api('/forgot', 'POST', { email: $('r_mail').value.trim() }); showReset('code', $('r_mail').value.trim()); }
+    catch (e) { $('r_err').textContent = e.message; }
+  };
+  const trocar = async () => {
+    try {
+      await api('/reset', 'POST', { email, code: $('r_code').value.trim(), password: $('r_pw').value });
+      $('r_err').className = 'msg ok'; $('r_err').textContent = 'Senha trocada! Entre com a nova senha.';
+      setTimeout(() => showAuth('login'), 1500);
+    } catch (e) { $('r_err').textContent = e.message; }
+  };
+  $('app').replaceChildren(h('div', { class: 'auth card' },
+    h('h1', { style: 'margin:0 0 4px' }, 'Recuperar senha'),
+    step === 'mail'
+      ? [h('p', { class: 'muted' }, 'Digite o e-mail da sua conta. Vamos enviar um código de 6 números.'), h('label', {}, 'E-mail'), h('input', { id: 'r_mail', type: 'email', autocomplete: 'email' }), h('button', { class: 'btn', style: 'width:100%;margin-top:12px', onclick: enviar }, 'Enviar código')]
+      : [h('p', { class: 'muted' }, 'Digite o código que chegou no e-mail e a nova senha.'), h('label', {}, 'Código'), h('input', { id: 'r_code', inputmode: 'numeric', maxlength: 6 }), h('label', {}, 'Nova senha (mínimo 8 caracteres)'), h('input', { id: 'r_pw', type: 'password', autocomplete: 'new-password' }), h('button', { class: 'btn', style: 'width:100%;margin-top:12px', onclick: trocar }, 'Trocar senha')],
+    h('div', { class: 'msg err', id: 'r_err' }),
+    h('p', { class: 'muted', style: 'text-align:center' }, h('a', { href: '#', onclick: e => { e.preventDefault(); showAuth('login'); } }, 'Voltar ao login'))));
+}
+
 // ---------- Login / cadastro ----------
 function showAuth(mode = 'login') {
   const signup = mode === 'signup';
@@ -37,7 +58,7 @@ function showAuth(mode = 'login') {
       } catch (e) { $('a_err').textContent = e.message; }
     } }, signup ? 'Criar minha loja' : 'Entrar'),
     h('p', { class: 'muted', style: 'text-align:center' }, signup ? 'Já tem conta? ' : 'Ainda não tem conta? ',
-      h('a', { href: '#', onclick: e => { e.preventDefault(); showAuth(signup ? 'login' : 'signup'); } }, signup ? 'Entrar' : 'Criar conta grátis'))));
+      h('a', { href: '#', onclick: e => { e.preventDefault(); showAuth(signup ? 'login' : 'signup'); } }, signup ? 'Entrar' : 'Criar conta grátis')), signup ? null : h('p', { class: 'muted', style: 'text-align:center' }, h('a', { href: '#', onclick: e => { e.preventDefault(); showReset(); } }, 'Esqueci minha senha'))));
 }
 
 // ---------- Estrutura principal ----------

@@ -7,6 +7,9 @@ const crypto = require('node:crypto');
 const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut } = require('./lib');
 const { receipt } = require('./receipt');
 const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
+const { sendMail, mailReady } = require('./mail');
+
+const codeHash = code => crypto.createHash('sha256').update('pedeai-reset:' + code).digest('hex');
 
 // Calcula a taxa de entrega da loja para um endereço (modo: tabela por km, em linha reta)
 async function quoteDelivery(store, address) {
@@ -125,6 +128,42 @@ async function api(req, res, url) {
     if (!s || !checkPass(String(b.password || ''), s.pass_hash)) return fail(res, 401, 'E-mail ou senha incorretos.');
     startSession(res, s.id, req);
     return json(res, 200, { slug: s.slug });
+  }
+  if (p === '/api/forgot' && m === 'POST') {
+    if (limited(req, 'forgot', 5, 3600e3)) return fail(res, 429, 'Muitas tentativas. Tente de novo daqui a uma hora.');
+    if (!mailReady()) return fail(res, 503, 'Recuperação de senha indisponível no momento. Fale com a Pedeaí.');
+    const b = await readBody(req);
+    const email = str(b.email, 120).toLowerCase();
+    const s = db.prepare('SELECT id, name FROM stores WHERE email=?').get(email);
+    if (s) {
+      const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+      db.prepare('DELETE FROM password_resets WHERE store_id=?').run(s.id);
+      db.prepare('INSERT INTO password_resets(store_id,code_hash,expires_at,attempts) VALUES(?,?,?,0)').run(s.id, codeHash(code), Date.now() + 15 * 60e3);
+      const nome = String(s.name).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      try {
+        await sendMail(email, 'Seu código para trocar a senha', `<p>Olá, ${nome}.</p><p>Seu código para trocar a senha é <b style="font-size:22px;letter-spacing:2px">${code}</b>. Ele vale por 15 minutos.</p><p>Se você não pediu isso, ignore este e-mail.</p>`);
+      } catch (e) { console.error(e.message); }
+    }
+    // Resposta igual existindo ou não a conta, para ninguém descobrir e-mails cadastrados.
+    return json(res, 200, { ok: true });
+  }
+  if (p === '/api/reset' && m === 'POST') {
+    if (limited(req, 'reset', 20, 600e3)) return fail(res, 429, 'Muitas tentativas. Aguarde um pouco.');
+    const b = await readBody(req);
+    const email = str(b.email, 120).toLowerCase(), code = str(b.code, 6), pw = String(b.password || '');
+    if (pw.length < 8) return fail(res, 400, 'A nova senha precisa ter 8 caracteres ou mais.');
+    const s = db.prepare('SELECT id FROM stores WHERE email=?').get(email);
+    const row = s ? db.prepare('SELECT * FROM password_resets WHERE store_id=?').get(s.id) : null;
+    if (!row || row.expires_at < Date.now() || row.attempts >= 5) return fail(res, 400, 'Código inválido ou vencido. Peça um novo.');
+    const a = Buffer.from(codeHash(code)), c = Buffer.from(row.code_hash);
+    if (a.length !== c.length || !crypto.timingSafeEqual(a, c)) {
+      db.prepare('UPDATE password_resets SET attempts=attempts+1 WHERE store_id=?').run(s.id);
+      return fail(res, 400, 'Código incorreto.');
+    }
+    db.prepare('UPDATE stores SET pass_hash=? WHERE id=?').run(hashPass(pw), s.id);
+    db.prepare('DELETE FROM password_resets WHERE store_id=?').run(s.id);
+    db.prepare('DELETE FROM sessions WHERE store_id=?').run(s.id);
+    return json(res, 200, { ok: true });
   }
   if (p === '/api/logout' && m === 'POST') {
     const t = cookies(req).sid; if (t) db.prepare('DELETE FROM sessions WHERE token=?').run(t);
