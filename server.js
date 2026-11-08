@@ -4,9 +4,10 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut } = require('./lib');
+const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut , isOpenNow, cleanHours } = require('./lib');
 const { receipt } = require('./receipt');
 const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
+const { DATA_DIR } = require('./lib');
 const { sendMail, mailReady } = require('./mail');
 
 const codeHash = code => crypto.createHash('sha256').update('pedeai-reset:' + code).digest('hex');
@@ -44,7 +45,7 @@ async function api(req, res, url) {
     if (limited(req, 'order', 15, 600e3)) return fail(res, 429, 'Muitos pedidos em pouco tempo. Tente de novo em alguns minutos.');
     const s = db.prepare('SELECT * FROM stores WHERE slug=?').get(g[1]);
     if (!s) return fail(res, 404, 'Loja não encontrada');
-    if (!s.is_open) return fail(res, 400, 'A loja está fechada no momento.');
+    if (!isOpenNow(s)) return fail(res, 400, 'A loja está fechada no momento.');
     const b = await readBody(req);
     const kind = b.kind === 'retirada' ? 'retirada' : 'entrega';
     const name = str(b.customer_name, 80), phone = str(b.phone, 30).replace(/[^\d+() -]/g, '');
@@ -174,6 +175,18 @@ async function api(req, res, url) {
   if (!p.startsWith('/api/')) return fail(res, 404, 'Não encontrado');
   if (!store) return fail(res, 401, 'Faça login.');
 
+  if (p === '/api/upload' && m === 'POST') {
+    if (limited(req, 'upload', 60, 3600e3)) return fail(res, 429, 'Muitos envios. Aguarde um pouco.');
+    const b = await readBody(req, 1500000);
+    const mm = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(b.data || ''));
+    if (!mm) return fail(res, 400, 'Escolha uma imagem (JPG, PNG ou WebP).');
+    const buf = Buffer.from(mm[2], 'base64');
+    if (buf.length > 1000000) return fail(res, 400, 'Foto muito grande. Tente outra.');
+    fs.mkdirSync(path.join(DATA_DIR, 'uploads'), { recursive: true });
+    const name = crypto.randomBytes(12).toString('hex') + '.' + (mm[1] === 'jpeg' ? 'jpg' : mm[1]);
+    fs.writeFileSync(path.join(DATA_DIR, 'uploads', name), buf);
+    return json(res, 201, { url: '/uploads/' + name });
+  }
   if (p === '/api/me' && m === 'GET') return json(res, 200, privateStore(store));
   if (p === '/api/me' && m === 'PUT') {
     const b = await readBody(req);
@@ -200,6 +213,8 @@ async function api(req, res, url) {
       });
       f.km_fees = JSON.stringify(clean);
     }
+    f.prep_time = str(b.prep_time, 30); f.store_notice = str(b.store_notice, 200);
+    if (b.hours !== undefined) f.hours = cleanHours(b.hours);
     if (f.accepts_pix && !f.pix_key) return fail(res, 400, 'Para aceitar Pix, informe sua chave Pix.');
     if (f.accepts_link && !f.payment_link) return fail(res, 400, 'Para aceitar link de pagamento, informe um link válido (https://...).');
     const cols = Object.keys(f);
@@ -275,6 +290,12 @@ const server = http.createServer(async (req, res) => {
     const p = url.pathname;
     if (p.startsWith('/api/')) return await api(req, res, url);
     if (req.method !== 'GET') return fail(res, 405, 'Método não permitido');
+    if (p.startsWith('/uploads/')) {
+      const f = path.basename(p), fp = path.join(DATA_DIR, 'uploads', f);
+      if (!/^[a-f0-9]{24}\.(jpg|png|webp)$/.test(f) || !fs.existsSync(fp)) return send(res, 404, 'Não encontrado', HTML);
+      const type = f.endsWith('.png') ? 'image/png' : f.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+      return send(res, 200, fs.readFileSync(fp), { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
+    }
     if (p === '/') return send(res, 200, page('index.html'), HTML);
     if (p === '/painel') return send(res, 200, page('painel.html'), HTML);
     if (p === '/admin') return send(res, 200, page('admin.html'), HTML);

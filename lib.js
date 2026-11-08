@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS stores(
   accepts_link INTEGER DEFAULT 0, payment_link TEXT DEFAULT '',
   delivery_fee REAL DEFAULT 0, min_order REAL DEFAULT 0, is_open INTEGER DEFAULT 1,
   lat REAL, lng REAL, km_fees TEXT DEFAULT '',
+  prep_time TEXT DEFAULT '', hours TEXT DEFAULT '', store_notice TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS password_resets(store_id INTEGER PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, store_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')));
@@ -58,10 +59,10 @@ function send(res, code, body, headers = {}) {
 }
 const json = (res, code, obj) => send(res, code, JSON.stringify(obj), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
 const fail = (res, code, msg) => json(res, code, { error: msg });
-function readBody(req) {
+function readBody(req, max = 200000) {
   return new Promise((ok, bad) => {
     let d = '';
-    req.on('data', c => { d += c; if (d.length > 200000) { req.destroy(); bad(new Error('Corpo muito grande')); } });
+    req.on('data', c => { d += c; if (d.length > max) { req.destroy(); bad(new Error('Corpo muito grande')); } });
     req.on('end', () => { try { ok(d ? JSON.parse(d) : {}); } catch { bad(new Error('JSON inválido')); } });
     req.on('error', bad);
   });
@@ -92,7 +93,7 @@ const slugify = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').re
 const RESERVED = new Set(['painel', 'admin', 'api', 'recibo', 'index', 'static']);
 const str = (v, max = 200) => String(v ?? '').trim().slice(0, max);
 const num = v => { const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
-const okUrl = u => { if (!u) return ''; try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href.slice(0, 500) : ''; } catch { return ''; } };
+const okUrl = u => { if (!u) return ''; if (/^\/uploads\/[a-f0-9]{24}\.(jpg|png|webp)$/.test(u)) return u; try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href.slice(0, 500) : ''; } catch { return ''; } };
 
 function authStore(req) {
   const t = cookies(req).sid;
@@ -106,8 +107,28 @@ function startSession(res, storeId, req) {
   const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}${secure}`);
 }
+// Horário: lista de 7 dias (0 = domingo). Sem horário cadastrado, vale só o botão de abrir/fechar.
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+function cleanHours(raw) {
+  if (!Array.isArray(raw) || raw.length !== 7) return '';
+  return JSON.stringify(raw.map(d => ({ on: !!(d && d.on), open: HHMM.test(d && d.open) ? d.open : '08:00', close: HHMM.test(d && d.close) ? d.close : '22:00' })));
+}
+function isOpenNow(s) {
+  if (!s.is_open) return false;
+  let hours; try { hours = JSON.parse(s.hours || 'null'); } catch { hours = null; }
+  if (!Array.isArray(hours)) return true;
+  const br = new Date(Date.now() - 3 * 3600e3); // horário de Brasília
+  const day = br.getUTCDay(), now = br.getUTCHours() * 60 + br.getUTCMinutes();
+  const toM = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const hoje = hours[day];
+  if (hoje && hoje.on) { const o = toM(hoje.open), c = toM(hoje.close); if (c > o ? (now >= o && now < c) : (now >= o)) return true; }
+  const ontem = hours[(day + 6) % 7];
+  if (ontem && ontem.on) { const o = toM(ontem.open), c = toM(ontem.close); if (c < o && now < c) return true; }
+  return false;
+}
 const publicStore = s => ({
-  slug: s.slug, name: s.name, whatsapp: s.whatsapp, address: s.address, city: s.city, is_open: !!s.is_open,
+  slug: s.slug, name: s.name, whatsapp: s.whatsapp, address: s.address, city: s.city, is_open: isOpenNow(s),
+  prep_time: s.prep_time || '', store_notice: s.store_notice || '', hours: s.hours || '',
   delivery_fee: s.delivery_fee, min_order: s.min_order,
   payments: {
     pix: !!(s.accepts_pix && s.pix_key), cash: !!s.accepts_cash, card_delivery: !!s.accepts_card_delivery,
@@ -148,4 +169,4 @@ setInterval(() => { for (const set of streams.values()) for (const r of set) r.w
 const STATUSES = ['novo', 'preparando', 'saiu', 'entregue', 'cancelado'];
 const orderOut = o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined });
 
-module.exports = { PORT, DATA_DIR, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut };
+module.exports = { cleanHours, isOpenNow, PORT, DATA_DIR, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut };

@@ -12,7 +12,20 @@ async function viewMenu() {
       h('label', {}, 'Descrição (opcional)'), h('input', { id: 'p_desc', value: p.description || '' }),
       h('div', { class: 'grid' },
         h('div', {}, h('label', {}, 'Categoria'), h('select', { id: 'p_cat' }, h('option', { value: '' }, 'Sem categoria'), m.categories.map(c => h('option', { value: c.id, selected: c.id === p.category_id }, c.name)))),
-        h('div', {}, h('label', {}, 'Link da foto (opcional)'), h('input', { id: 'p_img', placeholder: 'https://...', value: p.image_url || '' }))),
+        h('div', {}, h('label', {}, 'Foto do produto'),
+      h('div', { class: 'row', style: 'justify-content:flex-start' },
+        p.image_url ? h('img', { id: 'p_prev', src: p.image_url, alt: '', style: 'width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--line)' }) : h('span', { id: 'p_prev', class: 'muted' }, 'sem foto'),
+        h('label', { class: 'btn g s', style: 'cursor:pointer' }, 'Escolher da galeria', h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: async e => {
+          const f = e.target.files[0]; if (!f) return;
+          $('p_err').textContent = 'Enviando foto...';
+          try {
+            const r = await api('/upload', 'POST', { data: await comprimirFoto(f) });
+            $('p_img').value = r.url;
+            $('p_prev').replaceWith(h('img', { id: 'p_prev', src: r.url, alt: '', style: 'width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--line)' }));
+            $('p_err').textContent = 'Foto enviada. Agora salve o produto.';
+          } catch (err) { $('p_err').textContent = err.message || 'Não consegui enviar a foto.'; }
+        } }))),
+      h('input', { id: 'p_img', type: 'hidden', value: p.image_url || '' }))),
       h('div', { class: 'msg err', id: 'p_err' }),
       h('div', { class: 'row', style: 'justify-content:flex-start' },
         h('button', { class: 'btn', onclick: async () => {
@@ -39,6 +52,7 @@ async function viewMenu() {
 // ---------- Configurações ----------
 function viewConfig() {
   const v = $('view'), s = me;
+  const hours = (() => { try { const x = JSON.parse(s.hours || 'null'); return Array.isArray(x) ? x : []; } catch { return []; } })();
   const kmFees = (() => { try { const x = typeof s.km_fees === 'string' ? JSON.parse(s.km_fees || 'null') : s.km_fees; return Array.isArray(x) ? x : []; } catch { return []; } })();
   const chk = (id, label, val) => h('label', { class: 'chk' }, h('input', { type: 'checkbox', id, checked: !!val }), label);
   put(v, h('div', { class: 'card' },
@@ -58,6 +72,16 @@ function viewConfig() {
     chk('s_card', 'Aceitar cartão na maquininha (na entrega)', s.accepts_card_delivery),
     chk('s_link', 'Aceitar cartão online por link de pagamento (Mercado Pago, InfinitePay, etc.)', s.accepts_link),
     h('label', {}, 'Seu link de pagamento'), h('input', { id: 's_linkurl', value: s.payment_link, placeholder: 'https://...' }),
+    h('h3', { style: 'margin:18px 0 0' }, 'Horário de funcionamento'),
+    h('p', { class: 'muted', style: 'margin:4px 0' }, 'Sem horário, a loja fica aberta enquanto o botão "Loja aberta" estiver marcado. Com horário, ela abre e fecha sozinha.'),
+    ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((dia, i) => h('div', { class: 'row', style: 'margin:6px 0;flex-wrap:wrap' },
+      h('label', { class: 'chk', style: 'margin:0;width:110px' }, h('input', { type: 'checkbox', id: 'h_on' + i, checked: !!(hours[i] && hours[i].on) }), dia),
+      h('input', { type: 'time', id: 'h_o' + i, value: (hours[i] && hours[i].open) || '08:00', style: 'width:auto' }),
+      h('span', {}, 'às'),
+      h('input', { type: 'time', id: 'h_c' + i, value: (hours[i] && hours[i].close) || '22:00', style: 'width:auto' }))),
+    h('div', { class: 'grid', style: 'margin-top:10px' },
+      h('div', {}, h('label', {}, 'Tempo de preparo (ex.: 30-40 min)'), h('input', { id: 's_prep', value: s.prep_time || '' })),
+      h('div', {}, h('label', {}, 'Aviso para o cliente (opcional)'), h('input', { id: 's_notice', value: s.store_notice || '', placeholder: 'Ex.: Estamos com fila, pedidos podem demorar' }))),
     h('h3', { style: 'margin:18px 0 0' }, 'Taxa de entrega por km'),
     h('p', { class: 'muted', style: 'margin:4px 0' }, 'Distância em linha reta, do endereço da loja ao do cliente. Deixe em branco os km em que você não entrega. Salve o endereço da loja acima para o cálculo funcionar.'),
     h('div', { class: 'grid' }, Array.from({ length: 15 }, (_, i) => h('div', {}, h('label', {}, (i + 1) + ' km'), h('input', { id: 's_km' + (i + 1), inputmode: 'decimal', value: kmFees[i] == null ? '' : String(kmFees[i]).replace('.', ','), placeholder: 'R$' })))),
@@ -66,7 +90,7 @@ function viewConfig() {
       const g = id => $(id).value, c = id => $(id).checked;
       try {
         const saved = await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), city: g('s_city'), min_order: g('s_min'), is_open: c('s_open'),
-          accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
+          accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), prep_time: g('s_prep'), store_notice: g('s_notice'), hours: Array.from({ length: 7 }, (_, i) => ({ on: c('h_on' + i), open: g('h_o' + i), close: g('h_c' + i) })), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
         me = await api('/me'); $('s_msg').className = saved.warning ? 'msg err' : 'msg ok'; $('s_msg').textContent = saved.warning || 'Salvo!';
       } catch (e) { $('s_msg').className = 'msg err'; $('s_msg').textContent = e.message; }
     } }, 'Salvar configurações')));
@@ -88,3 +112,13 @@ async function viewBilling() {
       h('div', { class: 'tier' + (b.fee === t.topFee ? ' cur' : '') }, h('span', {}, 'Acima de ' + brl(t.midUpTo)), h('span', {}, brl(t.topFee)))));
 }
 start();
+
+// Reduz a foto no celular antes de enviar (lado máximo 900 px, JPEG)
+async function comprimirFoto(file) {
+  const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = URL.createObjectURL(file); });
+  const k = Math.min(1, 900 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.82);
+}

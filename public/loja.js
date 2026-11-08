@@ -25,6 +25,8 @@ async function load() {
   const s = data.store;
   put($('hd'), 
     h('h1', {}, s.name),
+    s.store_notice ? h('p', { style: 'color:var(--brand);font-weight:600' }, s.store_notice) : null,
+    s.prep_time ? h('p', {}, 'Tempo de preparo: ' + s.prep_time) : null,
     h('p', {}, [s.address, s.city].filter(Boolean).join(' · ')),
     h('span', { class: 'badge ' + (s.is_open ? 'open' : 'closed') }, s.is_open ? 'Aberto agora' : 'Fechado no momento'),
     s.delivery_fee ? h('p', {}, 'Taxa de entrega: ' + brl(s.delivery_fee) + (s.min_order ? ' · Pedido mínimo: ' + brl(s.min_order) : '')) : null
