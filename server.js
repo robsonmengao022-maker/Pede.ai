@@ -6,6 +6,21 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut } = require('./lib');
 const { receipt } = require('./receipt');
+const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
+
+// Calcula a taxa de entrega da loja para um endereço (modo: tabela por km, em linha reta)
+async function quoteDelivery(store, address) {
+  const fees = parseFees(store.km_fees);
+  if (!fees) return { error: 'Esta loja ainda não configurou a taxa de entrega. Use a opção de retirada ou fale com a loja.' };
+  if (store.lat == null || store.lng == null) return { error: 'A loja ainda não tem o endereço localizado no mapa. Peça para o lojista salvar o endereço nas configurações.' };
+  const city = store.city ? `, ${store.city}` : '';
+  const point = await geocode(`${address}${city}, Brasil`);
+  if (!point) return { error: 'Não encontrei esse endereço. Confira rua, número, bairro e cidade.' };
+  const km = kmFromPoints({ lat: store.lat, lng: store.lng }, point);
+  if (km > MAX_KM) return { error: `Endereço fora da área de entrega (até ${MAX_KM} km).` };
+  if (fees[km - 1] == null) return { error: `Esta loja não entrega a ${km} km. Confira o endereço ou fale com a loja.` };
+  return { km, fee: fees[km - 1] };
+}
 
 // ---------- Rotas da API ----------
 async function api(req, res, url) {
@@ -46,7 +61,12 @@ async function api(req, res, url) {
       items.push({ name: prod.name, qty, price: prod.price, obs: str(it.obs, 120) });
     }
     if (subtotal < s.min_order) return fail(res, 400, `Pedido mínimo: R$ ${s.min_order.toFixed(2).replace('.', ',')}`);
-    const fee = kind === 'entrega' ? s.delivery_fee : 0;
+    let fee = 0;
+    if (kind === 'entrega') {
+      const q = await quoteDelivery(s, address);
+      if (q.error) return fail(res, 400, q.error);
+      fee = q.fee;
+    }
     const total = Math.round((subtotal + fee) * 100) / 100;
     const code = crypto.randomBytes(3).toString('hex').toUpperCase();
     const r = db.prepare(`INSERT INTO orders(store_id,code,customer_name,phone,kind,address,notes,payment_method,change_for,items_json,subtotal,delivery_fee,total)
@@ -58,6 +78,14 @@ async function api(req, res, url) {
     if (method === 'pix') out.pix = pixPayload({ key: s.pix_key, name: s.pix_name || s.name, city: s.city, amount: total, txid: code });
     if (method === 'link') out.payment_link = s.payment_link;
     return json(res, 201, out);
+  }
+  if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/quote$/)) && m === 'GET') {
+    const s = db.prepare('SELECT * FROM stores WHERE slug=?').get(g[1]);
+    if (!s) return fail(res, 404, 'Loja não encontrada');
+    if (limited(req, 'quote', 60, 600e3)) return fail(res, 429, 'Muitas consultas. Aguarde um pouco.');
+    const address = str(url.searchParams.get('address'), 250);
+    if (address.length < 6) return json(res, 200, { error: 'Digite o endereço completo.' });
+    return json(res, 200, await quoteDelivery(s, address));
   }
   if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/orders\/([A-F0-9]{6})$/)) && m === 'GET') {
     const row = db.prepare(`SELECT o.status,o.total FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.slug=? AND o.code=?`).get(g[1], g[2]);
@@ -115,11 +143,27 @@ async function api(req, res, url) {
       accepts_link: b.accepts_link ? 1 : 0, payment_link: okUrl(str(b.payment_link, 500)),
       delivery_fee: Math.max(0, num(b.delivery_fee) || 0), min_order: Math.max(0, num(b.min_order) || 0), is_open: b.is_open ? 1 : 0,
     };
+    let warning = '';
+    if ((f.address || f.city) && (f.address !== store.address || f.city !== store.city || store.lat == null)) {
+      const pt = await geocode(`${f.address}, ${f.city}, Brasil`);
+      f.lat = pt ? pt.lat : null;
+      f.lng = pt ? pt.lng : null;
+      if (!pt) warning = 'Não consegui localizar o endereço da loja no mapa. Confira rua, número e cidade e salve de novo.';
+    }
+    if (Array.isArray(b.km_fees)) {
+      const clean = Array.from({ length: MAX_KM }, (_, i) => {
+        const v = b.km_fees[i];
+        if (v === '' || v == null) return null;
+        const n = num(v);
+        return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+      });
+      f.km_fees = JSON.stringify(clean);
+    }
     if (f.accepts_pix && !f.pix_key) return fail(res, 400, 'Para aceitar Pix, informe sua chave Pix.');
     if (f.accepts_link && !f.payment_link) return fail(res, 400, 'Para aceitar link de pagamento, informe um link válido (https://...).');
     const cols = Object.keys(f);
     db.prepare(`UPDATE stores SET ${cols.map(c => c + '=?').join(',')} WHERE id=?`).run(...cols.map(c => f[c]), store.id);
-    return json(res, 200, { ok: true });
+    return json(res, 200, { ok: true, warning });
   }
   if (p === '/api/menu' && m === 'GET') {
     return json(res, 200, {

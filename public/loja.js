@@ -14,6 +14,8 @@ const put = (el, ...k) => el.replaceChildren(...k.flat().filter(c => c != null &
 const ls = { get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
 let data, cart = {}; // id -> {qty, obs}
+let quote = null; // taxa de entrega calculada pelo endereço
+let refreshTotals = () => {};
 
 async function load() {
   const r = await fetch('/api/public/' + slug);
@@ -69,6 +71,7 @@ $('cartBtn').onclick = checkout;
 const PAYLABEL = { pix: 'Pix', dinheiro: 'Dinheiro', cartao_entrega: 'Cartão na entrega (maquininha)', link: 'Cartão online (link de pagamento)' };
 function checkout() {
   const s = data.store, d = $('dlg'); d.dataset.view = 'checkout';
+  quote = null;
   const pays = [['pix', s.payments.pix], ['dinheiro', s.payments.cash], ['cartao_entrega', s.payments.card_delivery], ['link', s.payments.link]].filter(x => x[1]).map(x => x[0]);
   const f = { kind: 'entrega', pay: pays[0] };
   const body = h('div', { class: 'pad' }, h('h3', {}, 'Seu pedido'),
@@ -79,7 +82,7 @@ function checkout() {
       ['entrega', 'retirada'].map(k => h('label', {}, h('input', { type: 'radio', name: 'kind', value: k, checked: k === 'entrega', onchange: () => { f.kind = k; $('addrBox').hidden = k !== 'entrega'; totals(); } }), h('span', {}, k === 'entrega' ? 'Entrega' : 'Retirada')))),
     h('label', {}, 'Seu nome'), h('input', { id: 'f_name', autocomplete: 'name', value: ls.get('nm') }),
     h('label', {}, 'Telefone / WhatsApp (com DDD)'), h('input', { id: 'f_phone', type: 'tel', autocomplete: 'tel', value: ls.get('ph') }),
-    h('div', { id: 'addrBox' }, h('label', {}, 'Endereço de entrega (rua, número, bairro)'), h('input', { id: 'f_addr', autocomplete: 'street-address', value: ls.get('ad') })),
+    h('div', { id: 'addrBox' }, h('label', {}, 'Endereço de entrega (rua, número, bairro)'), h('input', { id: 'f_addr', autocomplete: 'street-address', value: ls.get('ad') }), h('p', { id: 'qmsg', style: 'color:var(--mute);font-size:13px;margin-top:6px' })),
     h('label', {}, 'Observações do pedido (opcional)'), h('textarea', { id: 'f_notes', rows: 2, maxlength: 250 }),
     h('label', {}, 'Forma de pagamento'),
     h('select', { id: 'f_pay', onchange: e => { f.pay = e.target.value; $('chBox').hidden = f.pay !== 'dinheiro'; } }, pays.map(k => h('option', { value: k }, PAYLABEL[k]))),
@@ -91,19 +94,38 @@ function checkout() {
       h('button', { class: 'btn', style: 'flex:1', id: 'send', onclick: () => send(f) }, 'Enviar pedido')));
   d.replaceChildren(body);
   function totals() {
-    const fee = f.kind === 'entrega' ? s.delivery_fee : 0;
+    const fee = f.kind === 'entrega' && quote ? quote.fee : 0;
     put($('tot'), h('div', { class: 'row' }, h('span', {}, 'Subtotal'), h('span', {}, brl(subtotal()))),
-      fee ? h('div', { class: 'row' }, h('span', {}, 'Entrega'), h('span', {}, brl(fee))) : null,
+      fee ? h('div', { class: 'row' }, h('span', {}, 'Entrega'), h('span', {}, brl(fee))) : (f.kind === 'entrega' ? h('div', { class: 'row' }, h('span', {}, 'Entrega'), h('span', {}, 'a calcular')) : null),
       h('div', { class: 'row tot' }, h('span', {}, 'Total'), h('span', {}, brl(subtotal() + fee))));
   }
-  totals();
+  totals(); refreshTotals = totals;
+  $('f_addr').addEventListener('blur', quoteAddr);
+  $('f_addr').addEventListener('input', () => { quote = null; totals(); });
   if (!pays.length) { $('err').textContent = 'Esta loja ainda não configurou formas de pagamento.'; $('send').disabled = true; }
   if (!s.is_open) { $('err').textContent = 'A loja está fechada no momento.'; $('send').disabled = true; }
   if (!d.open) d.showModal();
   if (!lines().length) d.close();
 }
 
+async function quoteAddr() {
+  const a = $('f_addr').value.trim();
+  $('err').textContent = ''; $('qmsg').textContent = '';
+  quote = null;
+  if (a.length < 6) { $('err').textContent = 'Digite o endereço completo (rua, número, bairro e cidade).'; refreshTotals(); return; }
+  $('qmsg').textContent = 'Calculando a taxa...';
+  try {
+    const r = await fetch(`/api/public/${slug}/quote?address=${encodeURIComponent(a)}`);
+    const j = await r.json();
+    if (j.error) $('err').textContent = j.error;
+    else { quote = j; $('qmsg').textContent = `Distância: ${j.km} km`; }
+  } catch { $('err').textContent = 'Sem conexão para calcular a entrega.'; }
+  if (!quote) $('qmsg').textContent = '';
+  refreshTotals();
+}
+
 async function send(f) {
+  if (f.kind === 'entrega' && !quote) { await quoteAddr(); if (!quote) return; }
   const btn = $('send'); btn.disabled = true; $('err').textContent = '';
   const body = {
     kind: f.kind, customer_name: $('f_name').value, phone: $('f_phone').value, address: $('f_addr').value, notes: $('f_notes').value,

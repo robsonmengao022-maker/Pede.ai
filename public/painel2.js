@@ -39,6 +39,7 @@ async function viewMenu() {
 // ---------- Configurações ----------
 function viewConfig() {
   const v = $('view'), s = me;
+  const kmFees = (() => { try { const x = typeof s.km_fees === 'string' ? JSON.parse(s.km_fees || 'null') : s.km_fees; return Array.isArray(x) ? x : []; } catch { return []; } })();
   const chk = (id, label, val) => h('label', { class: 'chk' }, h('input', { type: 'checkbox', id, checked: !!val }), label);
   put(v, h('div', { class: 'card' },
     h('div', { class: 'grid' },
@@ -58,13 +59,16 @@ function viewConfig() {
     chk('s_card', 'Aceitar cartão na maquininha (na entrega)', s.accepts_card_delivery),
     chk('s_link', 'Aceitar cartão online por link de pagamento (Mercado Pago, InfinitePay, etc.)', s.accepts_link),
     h('label', {}, 'Seu link de pagamento'), h('input', { id: 's_linkurl', value: s.payment_link, placeholder: 'https://...' }),
+    h('h3', { style: 'margin:18px 0 0' }, 'Taxa de entrega por km'),
+    h('p', { class: 'muted', style: 'margin:4px 0' }, 'Distância em linha reta, do endereço da loja ao do cliente. Deixe em branco os km em que você não entrega. Salve o endereço da loja acima para o cálculo funcionar.'),
+    h('div', { class: 'grid' }, Array.from({ length: 15 }, (_, i) => h('div', {}, h('label', {}, (i + 1) + ' km'), h('input', { id: 's_km' + (i + 1), inputmode: 'decimal', value: kmFees[i] == null ? '' : String(kmFees[i]).replace('.', ','), placeholder: 'R$' })))),
     h('div', { class: 'msg', id: 's_msg' }),
     h('button', { class: 'btn', onclick: async () => {
       const g = id => $(id).value, c = id => $(id).checked;
       try {
-        await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), city: g('s_city'), delivery_fee: g('s_fee'), min_order: g('s_min'), is_open: c('s_open'),
-          accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl') });
-        me = await api('/me'); $('s_msg').className = 'msg ok'; $('s_msg').textContent = 'Salvo!';
+        const saved = await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), city: g('s_city'), delivery_fee: g('s_fee'), min_order: g('s_min'), is_open: c('s_open'),
+          accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
+        me = await api('/me'); $('s_msg').className = saved.warning ? 'msg err' : 'msg ok'; $('s_msg').textContent = saved.warning || 'Salvo!';
       } catch (e) { $('s_msg').className = 'msg err'; $('s_msg').textContent = e.message; }
     } }, 'Salvar configurações')));
 }

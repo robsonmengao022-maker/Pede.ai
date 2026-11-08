@@ -81,3 +81,7 @@ public/loja.html   site de pedidos do cliente
 public/painel.html painel do lojista
 public/admin.html  painel do dono da plataforma
 ```
+
+## Entrega por km (tabela do lojista)
+
+Cada loja preenche a taxa de cada km (1 a 15 km) em **Configurações**. A distância é em linha reta, do endereço da loja ao do cliente, calculada com dados do OpenStreetMap (gratuito, com limite de uso). Deixe em branco os km em que a loja não entrega. Pra variável `GEOCODER_URL` você pode trocar o serviço de mapa no futuro.

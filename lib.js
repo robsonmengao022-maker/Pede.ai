@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS stores(
   accepts_pix INTEGER DEFAULT 0, accepts_cash INTEGER DEFAULT 1, accepts_card_delivery INTEGER DEFAULT 0,
   accepts_link INTEGER DEFAULT 0, payment_link TEXT DEFAULT '',
   delivery_fee REAL DEFAULT 0, min_order REAL DEFAULT 0, is_open INTEGER DEFAULT 1,
+  lat REAL, lng REAL, km_fees TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, store_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, name TEXT NOT NULL, position INTEGER DEFAULT 0);
