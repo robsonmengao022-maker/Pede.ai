@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Painel do lojista — Pedeaí</title>
+<style>
+:root{--brand:#ff4d2e;--ink:#1d1b1a;--mute:#6f6a66;--line:#ece7e3;--bg:#faf7f5;--card:#fff}
+*{box-sizing:border-box}body{margin:0;font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{max-width:900px;margin:0 auto;padding:12px 16px 60px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;flex-wrap:wrap}
+.top h1{font-size:20px;margin:0}.top h1 span{color:var(--brand)}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px}.tabs button{padding:9px 16px;border:1px solid var(--line);background:var(--card);border-radius:99px;font:600 14px inherit;cursor:pointer;white-space:nowrap}
+.tabs .on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.btn{background:var(--brand);color:#fff;border:0;border-radius:10px;padding:10px 16px;font:600 14px inherit;cursor:pointer}
+.btn.s{padding:6px 12px;font-size:13px}.btn.g{background:var(--bg);color:var(--ink);border:1px solid var(--line)}.btn.r{background:#fde8e6;color:#b3261e}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}
+input[type=checkbox]{width:auto}.chk{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px;margin:8px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.grid{grid-template-columns:1fr}}
+.msg{font-size:14px;margin-top:8px;min-height:18px}.err{color:#b3261e}.ok{color:#157a35}
+.order{border-left:5px solid var(--line)}.order.novo{border-left-color:var(--brand);background:#fff8f6}
+.order h3{margin:0;font-size:16px;display:flex;justify-content:space-between;gap:8px}
+.tag{font-size:12px;padding:2px 9px;border-radius:99px;background:var(--bg);border:1px solid var(--line);font-weight:600}
+.order ul{margin:8px 0;padding-left:18px}.order .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.muted{color:var(--mute);font-size:14px}.bar{height:14px;background:var(--line);border-radius:99px;overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;background:var(--brand)}
+.tier{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}.tier.cur{font-weight:700;color:var(--brand)}
+.auth{max-width:420px;margin:8vh auto}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script src="/painel.js"></script>
+<script src="/painel2.js"></script>
+</body>
+</html>
