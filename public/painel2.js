@@ -47,7 +47,6 @@ function viewConfig() {
       h('div', {}, h('label', {}, 'WhatsApp'), h('input', { id: 's_wa', value: s.whatsapp })),
       h('div', {}, h('label', {}, 'Endereço'), h('input', { id: 's_addr', value: s.address })),
       h('div', {}, h('label', {}, 'Cidade'), h('input', { id: 's_city', value: s.city })),
-      h('div', {}, h('label', {}, 'Taxa de entrega (R$)'), h('input', { id: 's_fee', inputmode: 'decimal', value: String(s.delivery_fee).replace('.', ',') })),
       h('div', {}, h('label', {}, 'Pedido mínimo (R$)'), h('input', { id: 's_min', inputmode: 'decimal', value: String(s.min_order).replace('.', ',') }))),
     chk('s_open', 'Loja aberta (aceitando pedidos)', s.is_open),
     h('h3', { style: 'margin:18px 0 0' }, 'Formas de pagamento'),
@@ -66,7 +65,7 @@ function viewConfig() {
     h('button', { class: 'btn', onclick: async () => {
       const g = id => $(id).value, c = id => $(id).checked;
       try {
-        const saved = await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), city: g('s_city'), delivery_fee: g('s_fee'), min_order: g('s_min'), is_open: c('s_open'),
+        const saved = await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), city: g('s_city'), min_order: g('s_min'), is_open: c('s_open'),
           accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
         me = await api('/me'); $('s_msg').className = saved.warning ? 'msg err' : 'msg ok'; $('s_msg').textContent = saved.warning || 'Salvo!';
       } catch (e) { $('s_msg').className = 'msg err'; $('s_msg').textContent = e.message; }
