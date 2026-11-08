@@ -18,6 +18,8 @@ async function quoteDelivery(store, address) {
   if (!point) return { error: 'Não encontrei esse endereço. Confira rua, número, bairro e cidade.' };
   const km = kmFromPoints({ lat: store.lat, lng: store.lng }, point);
   if (km > MAX_KM) return { error: `Endereço fora da área de entrega (até ${MAX_KM} km).` };
+  const maxKm = fees.reduce((last, v, i) => (v !== null ? i + 1 : last), 0);
+  if (km > maxKm) return { error: `Esta loja entrega até ${maxKm} km. Seu endereço fica a ${km} km.` };
   if (fees[km - 1] == null) return { error: `Esta loja não entrega a ${km} km. Confira o endereço ou fale com a loja.` };
   return { km, fee: fees[km - 1] };
 }
