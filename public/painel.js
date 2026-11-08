@@ -103,7 +103,7 @@ function orderCard(o) {
     h('h3', {}, h('span', {}, '#' + o.code + ' · ' + o.customer_name), h('span', { class: 'tag' }, SLABEL[o.status])),
     h('div', { class: 'muted' }, new Date(o.created_at.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) + ' · ' + (o.kind === 'entrega' ? 'Entrega' : 'Retirada') + ' · ' + o.phone),
     o.kind === 'entrega' ? h('div', {}, '📍 ' + o.address) : null,
-    h('ul', {}, o.items.map(i => h('li', {}, i.qty + 'x ' + i.name + ' — ' + brl(i.qty * i.price), i.obs ? h('div', { class: 'muted' }, 'Obs: ' + i.obs) : null))),
+    h('ul', {}, o.items.map(i => h('li', {}, i.qty + 'x ' + i.name + ' — ' + brl(i.qty * i.price), i.obs ? h('div', { class: 'muted' }, 'Obs: ' + i.obs) : null, i.choices ? h('div', { class: 'muted' }, i.choices) : null))),
     o.notes ? h('div', { class: 'muted' }, 'Obs do pedido: ' + o.notes) : null,
     h('div', {}, h('b', {}, 'Total ' + brl(o.total)), ' · ' + PAY[o.payment_method] + (o.change_for ? ' (troco p/ ' + o.change_for + ')' : '')),
     h('div', { class: 'acts' },

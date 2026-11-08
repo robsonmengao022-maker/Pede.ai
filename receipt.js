@@ -13,7 +13,7 @@ h1{font-size:16px;text-align:center;margin:0 0 4px}.c{text-align:center}hr{borde
 <body><h1>${esc(store.name)}</h1><div class="c">${esc(when)}</div><hr>
 <div class="c big b">PEDIDO #${esc(o.code)}</div><div class="c b">${o.kind === 'entrega' ? 'ENTREGA' : 'RETIRADA'}</div><hr>
 <div class="b">${esc(o.customer_name)}</div><div>${esc(o.phone)}</div>${o.kind === 'entrega' ? `<div>${esc(o.address)}</div>` : ''}<hr>
-${items.map(i => `<div class="r"><span>${i.qty}x ${esc(i.name)}</span><span>${brl(i.qty * i.price)}</span></div>${i.obs ? `<div class="obs">Obs: ${esc(i.obs)}</div>` : ''}`).join('')}<hr>
+${items.map(i => `<div class="r"><span>${i.qty}x ${esc(i.name)}</span><span>${brl(i.qty * i.price)}</span></div>${i.obs ? `<div class="obs">Obs: ${esc(i.obs)}</div>` : ''}${i.choices ? `<div class="obs">${esc(i.choices)}</div>` : ''}`).join('')}<hr>
 <div class="r"><span>Subtotal</span><span>${brl(o.subtotal)}</span></div>
 ${o.delivery_fee ? `<div class="r"><span>Entrega</span><span>${brl(o.delivery_fee)}</span></div>` : ''}
 <div class="r b big"><span>TOTAL</span><span>${brl(o.total)}</span></div><hr>

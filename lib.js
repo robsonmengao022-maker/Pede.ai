@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS password_resets(store_id INTEGER PRIMARY KEY, code_ha
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, store_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, name TEXT NOT NULL, position INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, category_id INTEGER, name TEXT NOT NULL,
-  description TEXT DEFAULT '', price REAL NOT NULL, image_url TEXT DEFAULT '', active INTEGER DEFAULT 1);
+  description TEXT DEFAULT '', price REAL NOT NULL, image_url TEXT DEFAULT '', active INTEGER DEFAULT 1, groups_json TEXT DEFAULT '[]', position INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, code TEXT NOT NULL,
   customer_name TEXT, phone TEXT, kind TEXT, address TEXT, notes TEXT, payment_method TEXT, change_for TEXT,
   items_json TEXT, subtotal REAL, delivery_fee REAL, total REAL, status TEXT DEFAULT 'novo',
@@ -107,6 +107,23 @@ function startSession(res, storeId, req) {
   const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}${secure}`);
 }
+// Grupos de escolha de um produto (adicionais e combos): [{name, min, max, items:[{name, price}]}]
+function cleanGroups(raw) {
+  if (!Array.isArray(raw)) return '[]';
+  const out = raw.slice(0, 10).map(g => {
+    const min = Math.max(0, Math.min(10, Math.floor(Number(g && g.min)) || 0));
+    const max = Math.max(1, Math.min(20, Math.floor(Number(g && g.max)) || 1));
+    const items = (Array.isArray(g && g.items) ? g.items : []).slice(0, 30)
+      .map(it => ({ name: str(it && it.name, 60), price: Math.max(0, Math.round((Number(it && it.price) || 0) * 100) / 100) }))
+      .filter(it => it.name);
+    return { name: str(g && g.name, 40) || 'Opções', min: Math.min(min, max), max, items };
+  }).filter(g => g.items.length);
+  return JSON.stringify(out);
+}
+function parseGroups(raw) {
+  try { const x = JSON.parse(raw || '[]'); return Array.isArray(x) ? x : []; } catch { return []; }
+}
+
 // Horário: lista de 7 dias (0 = domingo). Sem horário cadastrado, vale só o botão de abrir/fechar.
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 function cleanHours(raw) {
@@ -169,4 +186,4 @@ setInterval(() => { for (const set of streams.values()) for (const r of set) r.w
 const STATUSES = ['novo', 'preparando', 'saiu', 'entregue', 'cancelado'];
 const orderOut = o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined });
 
-module.exports = { cleanHours, isOpenNow, PORT, DATA_DIR, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut };
+module.exports = { cleanGroups, parseGroups, cleanHours, isOpenNow, PORT, DATA_DIR, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut };

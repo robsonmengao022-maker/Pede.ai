@@ -4,7 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut , isOpenNow, cleanHours } = require('./lib');
+const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut , isOpenNow, cleanHours, cleanGroups, parseGroups } = require('./lib');
 const { receipt } = require('./receipt');
 const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
 const { DATA_DIR } = require('./lib');
@@ -28,6 +28,8 @@ async function quoteDelivery(store, address) {
   return { km, fee: fees[km - 1] };
 }
 
+const brlTxt = v => 'R$ ' + v.toFixed(2).replace('.', ',');
+
 // ---------- Rotas da API ----------
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
@@ -38,7 +40,7 @@ async function api(req, res, url) {
     const s = db.prepare('SELECT * FROM stores WHERE slug=?').get(g[1]);
     if (!s) return fail(res, 404, 'Loja não encontrada');
     const categories = db.prepare('SELECT id,name FROM categories WHERE store_id=? ORDER BY position,id').all(s.id);
-    const products = db.prepare('SELECT id,category_id,name,description,price,image_url FROM products WHERE store_id=? AND active=1 ORDER BY id').all(s.id);
+    const products = db.prepare('SELECT id,category_id,name,description,price,image_url,groups_json FROM products WHERE store_id=? AND active=1 ORDER BY position,id').all(s.id);
     return json(res, 200, { store: publicStore(s), categories, products });
   }
   if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/orders$/)) && m === 'POST') {
@@ -58,13 +60,28 @@ async function api(req, res, url) {
     if (!allowed[method]) return fail(res, 400, 'Forma de pagamento não disponível nesta loja.');
     if (!Array.isArray(b.items) || !b.items.length || b.items.length > 60) return fail(res, 400, 'Carrinho vazio.');
     let subtotal = 0; const items = [];
-    const getP = db.prepare('SELECT id,name,price FROM products WHERE id=? AND store_id=? AND active=1');
+    const getP = db.prepare('SELECT id,name,price,groups_json FROM products WHERE id=? AND store_id=? AND active=1');
     for (const it of b.items) {
       const prod = getP.get(Number(it.id), s.id);
       const qty = Math.floor(Number(it.qty));
       if (!prod || !(qty >= 1 && qty <= 50)) return fail(res, 400, 'Item inválido no carrinho.');
-      subtotal += prod.price * qty;
-      items.push({ name: prod.name, qty, price: prod.price, obs: str(it.obs, 120) });
+      let extra = 0; const txt = [];
+      for (const g of parseGroups(prod.groups_json)) {
+        const mine = (Array.isArray(it.choices) ? it.choices : []).find(x => x && x.group === g.name);
+        const uniq = [...new Set(mine && Array.isArray(mine.picks) ? mine.picks.map(v => str(v, 60)) : [])];
+        if (uniq.length < g.min || uniq.length > g.max) return fail(res, 400, `Em "${g.name}", escolha de ${g.min} a ${g.max} opção(ões).`);
+        const chosen = uniq.map(nm => {
+          const opt = g.items.find(x => x.name === nm);
+          if (!opt) return null;
+          extra += opt.price;
+          return opt.name + (opt.price ? ` (+ ${brlTxt(opt.price)})` : '');
+        });
+        if (chosen.includes(null)) return fail(res, 400, 'Opção inválida no carrinho.');
+        if (chosen.length) txt.push(`${g.name}: ${chosen.join(', ')}`);
+      }
+      const unit = Math.round((prod.price + extra) * 100) / 100;
+      subtotal += unit * qty;
+      items.push({ name: prod.name, qty, price: unit, obs: str(it.obs, 120), choices: txt.join(' · ') });
     }
     if (subtotal < s.min_order) return fail(res, 400, `Pedido mínimo: R$ ${s.min_order.toFixed(2).replace('.', ',')}`);
     let fee = 0;
@@ -224,7 +241,7 @@ async function api(req, res, url) {
   if (p === '/api/menu' && m === 'GET') {
     return json(res, 200, {
       categories: db.prepare('SELECT * FROM categories WHERE store_id=? ORDER BY position,id').all(store.id),
-      products: db.prepare('SELECT * FROM products WHERE store_id=? ORDER BY id').all(store.id),
+      products: db.prepare('SELECT * FROM products WHERE store_id=? ORDER BY position,id').all(store.id),
     });
   }
   if (p === '/api/categories' && m === 'POST') {
@@ -244,12 +261,20 @@ async function api(req, res, url) {
     if (!name || !(price >= 0)) return fail(res, 400, 'Informe nome e preço válidos.');
     let cat = Number(b.category_id) || null;
     if (cat && !db.prepare('SELECT 1 FROM categories WHERE id=? AND store_id=?').get(cat, store.id)) cat = null;
-    const vals = [cat, name, str(b.description, 300), Math.round(price * 100) / 100, okUrl(b.image_url), b.active === false || b.active === 0 ? 0 : 1];
+    const vals = [cat, name, str(b.description, 300), Math.round(price * 100) / 100, okUrl(b.image_url), b.active === false || b.active === 0 ? 0 : 1, cleanGroups(b.groups)];
     if (m === 'POST') {
-      const r = db.prepare('INSERT INTO products(category_id,name,description,price,image_url,active,store_id) VALUES(?,?,?,?,?,?,?)').run(...vals, store.id);
+      const r = db.prepare('INSERT INTO products(category_id,name,description,price,image_url,active,groups_json,store_id,position) VALUES(?,?,?,?,?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM products WHERE store_id=?))').run(...vals, store.id, store.id);
       return json(res, 201, { id: Number(r.lastInsertRowid) });
     }
-    db.prepare('UPDATE products SET category_id=?,name=?,description=?,price=?,image_url=?,active=? WHERE id=? AND store_id=?').run(...vals, g[1], store.id);
+    db.prepare('UPDATE products SET category_id=?,name=?,description=?,price=?,image_url=?,active=?,groups_json=? WHERE id=? AND store_id=?').run(...vals, g[1], store.id);
+    return json(res, 200, { ok: true });
+  }
+  if (p === '/api/reorder' && m === 'POST') {
+    const b = await readBody(req);
+    const table = b.type === 'categories' ? 'categories' : b.type === 'products' ? 'products' : null;
+    if (!table || !Array.isArray(b.ids)) return fail(res, 400, 'Pedido de ordem inválido.');
+    const up = db.prepare(`UPDATE ${table} SET position=? WHERE id=? AND store_id=?`);
+    b.ids.slice(0, 500).forEach((id, i) => up.run(i + 1, Number(id), store.id));
     return json(res, 200, { ok: true });
   }
   if (p === '/api/orders' && m === 'GET') {

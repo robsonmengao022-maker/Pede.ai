@@ -1,51 +1,106 @@
 // ---------- Cardápio ----------
+const parseG = raw => { try { const x = JSON.parse(raw || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } };
+const IMG_STYLE = 'width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--line)';
+async function moveItem(type, list, i, d) {
+  const ids = list.map(x => x.id); const j = i + d;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  await api('/reorder', 'POST', { type, ids });
+  viewMenu();
+}
 async function viewMenu() {
   const m = await api('/menu'); const v = $('view'); if (!v) return;
-  let editing = null;
+  let editing = null, groups = [], draft = {};
   const form = h('div', { class: 'card' });
-  function drawForm() {
-    const p = editing || {};
+  const catName = p => (m.categories.find(c => c.id === p.category_id) || {}).name || '';
+  const lerDraft = () => ({ ...draft,
+    name: $('p_name') ? $('p_name').value : draft.name, price: $('p_price') ? $('p_price').value : draft.price,
+    description: $('p_desc') ? $('p_desc').value : draft.description, category_id: $('p_cat') ? $('p_cat').value : draft.category_id,
+    image_url: $('p_img') ? $('p_img').value : draft.image_url });
+
+  function drawGroups() {
+    return h('div', {}, groups.map((g, gi) => h('div', { class: 'card', style: 'background:var(--bg);margin:10px 0' },
+      h('div', { class: 'row' }, h('b', {}, 'Grupo ' + (gi + 1)), h('button', { class: 'btn r s', onclick: () => { draft = lerDraft(); groups.splice(gi, 1); drawForm(true); } }, 'Remover grupo')),
+      h('div', { class: 'grid' },
+        h('div', {}, h('label', {}, 'Nome do grupo (ex.: Adicionais, Escolha a bebida)'), h('input', { value: g.name, oninput: e => { g.name = e.target.value; } })),
+        h('div', { class: 'grid' },
+          h('div', {}, h('label', {}, 'Mínimo de escolhas'), h('input', { inputmode: 'numeric', value: String(g.min), oninput: e => { g.min = Number(e.target.value) || 0; } })),
+          h('div', {}, h('label', {}, 'Máximo de escolhas'), h('input', { inputmode: 'numeric', value: String(g.max), oninput: e => { g.max = Number(e.target.value) || 1; } })))),
+      g.items.map((it, ii) => h('div', { class: 'row', style: 'margin:6px 0;flex-wrap:nowrap' },
+        h('input', { value: it.name, placeholder: 'Ex.: Bacon', style: 'flex:2;min-width:0', oninput: e => { it.name = e.target.value; } }),
+        h('input', { value: it.price ? String(it.price).replace('.', ',') : '', placeholder: 'R$ 0', inputmode: 'decimal', style: 'flex:1;min-width:0', oninput: e => { it.price = Number(String(e.target.value).replace(',', '.')) || 0; } }),
+        h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); g.items.splice(ii, 1); drawForm(true); } }, '✕'))),
+      h('button', { class: 'btn g s', style: 'margin-top:6px', onclick: () => { draft = lerDraft(); g.items.push({ name: '', price: 0 }); drawForm(true); } }, '+ Opção'))));
+  }
+
+  function fotoChange(e) {
+    const f = e.target.files[0]; if (!f) return;
+    $('p_err').textContent = 'Enviando foto...';
+    (async () => {
+      try {
+        const r = await api('/upload', 'POST', { data: await comprimirFoto(f) });
+        $('p_img').value = r.url;
+        $('p_prev').replaceWith(h('img', { id: 'p_prev', src: r.url, alt: '', style: IMG_STYLE }));
+        $('p_err').textContent = 'Foto enviada. Agora salve o produto.';
+      } catch (err) { $('p_err').textContent = err.message || 'Não consegui enviar a foto.'; }
+    })();
+  }
+
+  function drawForm(fresh) {
+    if (!fresh && $('p_name')) draft = lerDraft();
+    const p = draft;
     form.replaceChildren(h('b', {}, editing ? 'Editar produto' : 'Novo produto'),
       h('div', { class: 'grid' },
         h('div', {}, h('label', {}, 'Nome'), h('input', { id: 'p_name', value: p.name || '' })),
-        h('div', {}, h('label', {}, 'Preço (R$)'), h('input', { id: 'p_price', inputmode: 'decimal', value: p.price != null ? String(p.price).replace('.', ',') : '' }))),
-      h('label', {}, 'Descrição (opcional)'), h('input', { id: 'p_desc', value: p.description || '' }),
+        h('div', {}, h('label', {}, 'Preço (R$)'), h('input', { id: 'p_price', inputmode: 'decimal', value: p.price != null && p.price !== '' ? String(p.price).replace('.', ',') : '' }))),
+      h('label', {}, 'Descrição (ingredientes)'), h('input', { id: 'p_desc', value: p.description || '' }),
       h('div', { class: 'grid' },
-        h('div', {}, h('label', {}, 'Categoria'), h('select', { id: 'p_cat' }, h('option', { value: '' }, 'Sem categoria'), m.categories.map(c => h('option', { value: c.id, selected: c.id === p.category_id }, c.name)))),
+        h('div', {}, h('label', {}, 'Categoria'), h('select', { id: 'p_cat' }, h('option', { value: '' }, 'Sem categoria'), m.categories.map(c => h('option', { value: c.id, selected: String(c.id) === String(p.category_id) }, c.name)))),
         h('div', {}, h('label', {}, 'Foto do produto'),
-      h('div', { class: 'row', style: 'justify-content:flex-start' },
-        p.image_url ? h('img', { id: 'p_prev', src: p.image_url, alt: '', style: 'width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--line)' }) : h('span', { id: 'p_prev', class: 'muted' }, 'sem foto'),
-        h('label', { class: 'btn g s', style: 'cursor:pointer' }, 'Escolher da galeria', h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: async e => {
-          const f = e.target.files[0]; if (!f) return;
-          $('p_err').textContent = 'Enviando foto...';
-          try {
-            const r = await api('/upload', 'POST', { data: await comprimirFoto(f) });
-            $('p_img').value = r.url;
-            $('p_prev').replaceWith(h('img', { id: 'p_prev', src: r.url, alt: '', style: 'width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--line)' }));
-            $('p_err').textContent = 'Foto enviada. Agora salve o produto.';
-          } catch (err) { $('p_err').textContent = err.message || 'Não consegui enviar a foto.'; }
-        } }))),
-      h('input', { id: 'p_img', type: 'hidden', value: p.image_url || '' }))),
+          h('div', { class: 'row', style: 'justify-content:flex-start' },
+            p.image_url ? h('img', { id: 'p_prev', src: p.image_url, alt: '', style: IMG_STYLE }) : h('span', { id: 'p_prev', class: 'muted' }, 'sem foto'),
+            h('label', { class: 'btn g s', style: 'cursor:pointer' }, 'Escolher da galeria', h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: fotoChange }))))),
+      h('input', { id: 'p_img', type: 'hidden', value: p.image_url || '' }),
+      h('h3', { style: 'margin:16px 0 0' }, 'Adicionais e combos'),
+      h('p', { class: 'muted', style: 'margin:4px 0' }, 'Crie um grupo para cada escolha. Adicionais: "Adicionais", mínimo 0, máximo 3, com Bacon +R$ 4 e Cream cheese +R$ 3. Combo: "Escolha a bebida", mínimo 1, máximo 1, com as bebidas e preço zero.'),
+      drawGroups(),
+      h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); groups.push({ name: '', min: 0, max: 1, items: [] }); drawForm(true); } }, '+ Adicionar grupo'),
       h('div', { class: 'msg err', id: 'p_err' }),
-      h('div', { class: 'row', style: 'justify-content:flex-start' },
-        h('button', { class: 'btn', onclick: async () => {
-          const body = { name: $('p_name').value, price: $('p_price').value, description: $('p_desc').value, category_id: $('p_cat').value, image_url: $('p_img').value, active: editing ? editing.active : 1 };
-          try { editing ? await api('/products/' + editing.id, 'PUT', body) : await api('/products', 'POST', body); viewMenu(); } catch (e) { $('p_err').textContent = e.message; }
-        } }, editing ? 'Salvar' : 'Adicionar produto'),
-        editing ? h('button', { class: 'btn g', onclick: () => { editing = null; drawForm(); } }, 'Cancelar') : null));
+      h('div', { class: 'row', style: 'justify-content:flex-start;margin-top:10px' },
+        h('button', { class: 'btn', onclick: saveProduct }, editing ? 'Salvar produto' : 'Adicionar produto'),
+        editing ? h('button', { class: 'btn g', onclick: () => { editing = null; draft = {}; groups = []; drawForm(true); } }, 'Cancelar') : null));
   }
-  drawForm();
-  put(v, 
-    h('div', { class: 'card' }, h('b', {}, 'Categorias'),
-      h('div', { class: 'row', style: 'margin:8px 0' }, h('input', { id: 'c_name', placeholder: 'Ex: Lanches, Bebidas, Sobremesas' }), h('button', { class: 'btn', onclick: async () => { if ($('c_name').value.trim()) { await api('/categories', 'POST', { name: $('c_name').value }); viewMenu(); } } }, 'Criar')),
-      h('div', {}, m.categories.map(c => h('span', { class: 'tag', style: 'margin-right:6px;display:inline-block;margin-bottom:6px' }, c.name + ' ', h('a', { href: '#', title: 'Excluir', onclick: async e => { e.preventDefault(); if (confirm('Excluir categoria "' + c.name + '"? Os produtos ficam sem categoria.')) { await api('/categories/' + c.id, 'DELETE'); viewMenu(); } } }, '✕'))))),
+
+  async function saveProduct() {
+    const d = lerDraft();
+    const body = { name: d.name, price: d.price, description: d.description, category_id: d.category_id, image_url: d.image_url,
+      active: editing ? editing.active : 1,
+      groups: groups.filter(g => String(g.name).trim()).map(g => ({ name: g.name, min: g.min, max: g.max, items: g.items.filter(x => String(x.name).trim()) })) };
+    try { editing ? await api('/products/' + editing.id, 'PUT', body) : await api('/products', 'POST', body); viewMenu(); }
+    catch (e) { $('p_err').textContent = e.message; }
+  }
+
+  const cats = m.categories, prods = m.products;
+  draft = {}; drawForm(true);
+  v.replaceChildren(
+    h('div', { class: 'card' }, h('b', {}, 'Categorias (a ordem é a que aparece pro cliente)'),
+      h('div', { class: 'row', style: 'margin:8px 0' }, h('input', { id: 'c_name', placeholder: 'Ex: Lanches, Bebidas, Sobremesas' }),
+        h('button', { class: 'btn', onclick: async () => { const n = $('c_name').value.trim(); if (n) { await api('/categories', 'POST', { name: n }); viewMenu(); } } }, 'Criar')),
+      cats.map((c, i) => h('div', { class: 'row', style: 'margin:6px 0;flex-wrap:nowrap' }, h('span', { style: 'flex:1;min-width:0' }, c.name),
+        h('button', { class: 'btn g s', disabled: i === 0, onclick: () => moveItem('categories', cats, i, -1) }, '▲'),
+        h('button', { class: 'btn g s', disabled: i === cats.length - 1, onclick: () => moveItem('categories', cats, i, 1) }, '▼'),
+        h('button', { class: 'btn r s', onclick: async () => { if (confirm('Excluir a categoria "' + c.name + '"? Os produtos ficam sem categoria.')) { await api('/categories/' + c.id, 'DELETE'); viewMenu(); } } }, 'Excluir')))),
     form,
-    h('h2', { style: 'font-size:17px' }, 'Produtos (' + m.products.length + ')'),
-    m.products.map(p => h('div', { class: 'card row', style: p.active ? '' : 'opacity:.55' },
-      h('div', {}, h('b', {}, p.name), h('div', { class: 'muted' }, brl(p.price) + (p.category_id ? ' · ' + (m.categories.find(c => c.id === p.category_id)?.name || '') : '') + (p.active ? '' : ' · PAUSADO'))),
+    h('h2', { style: 'font-size:17px' }, 'Produtos (' + prods.length + ')'),
+    ...prods.map((p, i) => h('div', { class: 'card row', style: p.active ? '' : 'opacity:.55' },
+      h('div', { class: 'row', style: 'flex:1;min-width:0' },
+        p.image_url ? h('img', { src: p.image_url, alt: '', style: 'width:48px;height:48px;object-fit:cover;border-radius:8px;flex:none' }) : null,
+        h('div', { style: 'min-width:0' }, h('b', {}, p.name),
+          h('div', { class: 'muted' }, brl(p.price) + (catName(p) ? ' · ' + catName(p) : '') + (parseG(p.groups_json).length ? ' · ' + parseG(p.groups_json).length + ' grupo(s)' : '') + (p.active ? '' : ' · PAUSADO')))),
       h('div', { class: 'row' },
-        h('button', { class: 'btn g s', onclick: () => { editing = p; drawForm(); form.scrollIntoView({ behavior: 'smooth' }); } }, 'Editar'),
-        h('button', { class: 'btn g s', onclick: async () => { await api('/products/' + p.id, 'PUT', { ...p, active: p.active ? 0 : 1 }); viewMenu(); } }, p.active ? 'Pausar' : 'Ativar'),
+        h('button', { class: 'btn g s', disabled: i === 0, onclick: () => moveItem('products', prods, i, -1) }, '▲'),
+        h('button', { class: 'btn g s', disabled: i === prods.length - 1, onclick: () => moveItem('products', prods, i, 1) }, '▼'),
+        h('button', { class: 'btn g s', onclick: () => { editing = p; draft = { ...p }; groups = parseG(p.groups_json); drawForm(true); form.scrollIntoView({ behavior: 'smooth' }); } }, 'Editar'),
+        h('button', { class: 'btn g s', onclick: async () => { await api('/products/' + p.id, 'PUT', { ...p, groups: parseG(p.groups_json), active: p.active ? 0 : 1 }); viewMenu(); } }, p.active ? 'Pausar' : 'Ativar'),
         h('button', { class: 'btn r s', onclick: async () => { if (confirm('Excluir "' + p.name + '"?')) { await api('/products/' + p.id, 'DELETE'); viewMenu(); } } }, 'Excluir')))));
 }
 
