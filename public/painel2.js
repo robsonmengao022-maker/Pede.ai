@@ -102,6 +102,43 @@ async function viewMenu() {
         h('button', { class: 'btn g s', onclick: () => { editing = p; draft = { ...p }; groups = parseG(p.groups_json); drawForm(true); form.scrollIntoView({ behavior: 'smooth' }); } }, 'Editar'),
         h('button', { class: 'btn g s', onclick: async () => { await api('/products/' + p.id, 'PUT', { ...p, groups: parseG(p.groups_json), active: p.active ? 0 : 1 }); viewMenu(); } }, p.active ? 'Pausar' : 'Ativar'),
         h('button', { class: 'btn r s', onclick: async () => { if (confirm('Excluir "' + p.name + '"?')) { await api('/products/' + p.id, 'DELETE'); viewMenu(); } } }, 'Excluir')))));
+  v.append(cuponsCard());
+}
+
+// Cupons de desconto (lista + criação)
+function cuponsCard() {
+  const lista = h('div', {}), msg = h('div', { class: 'err' });
+  const cod = h('input', { placeholder: 'Código (ex: BEMVINDO10)', maxlength: 30 });
+  const tipo = h('select', {}, h('option', { value: 'percent' }, '% de desconto'), h('option', { value: 'fixed' }, 'R$ de desconto'));
+  const valor = h('input', { type: 'number', step: '0.01', placeholder: 'Valor (ex: 10)' });
+  const minimo = h('input', { type: 'number', step: '0.01', placeholder: 'Pedido mínimo em R$ (opcional)' });
+  const usos = h('input', { type: 'number', placeholder: 'Limite de usos (0 = sem limite)' });
+  const validade = h('input', { type: 'date' });
+  async function carrega() {
+    try {
+      const cs = await api('/coupons');
+      lista.replaceChildren(...(cs.length ? cs.map(c => h('div', { class: 'row', style: 'margin:6px 0;justify-content:space-between' },
+        h('div', { style: 'min-width:0' }, h('b', {}, c.code),
+          h('div', { class: 'muted' }, (c.kind === 'percent' ? c.value + '%' : brl(c.value)) + (c.min_order ? ' · mín. ' + brl(c.min_order) : '') +
+            (c.max_uses ? ' · ' + c.used + '/' + c.max_uses + ' usos' : ' · ' + c.used + ' usos') + (c.expires_at ? ' · até ' + c.expires_at.split('-').reverse().join('/') : ''))),
+        h('button', { class: 'btn r s', onclick: async () => { if (confirm('Excluir o cupom ' + c.code + '?')) { await api('/coupons/' + c.id, 'DELETE'); carrega(); } } }, 'Excluir')))
+        : [h('p', { class: 'muted' }, 'Nenhum cupom cadastrado.')]));
+    } catch (e) { msg.textContent = e.message; }
+  }
+  carrega();
+  return h('div', { class: 'card' }, h('b', {}, 'Cupons de desconto'),
+    h('p', { class: 'muted' }, 'O cliente digita o código no carrinho. Ex.: BEMVINDO10 dá 10% de desconto.'),
+    lista,
+    h('div', { style: 'margin-top:10px' }, cod, tipo, valor, minimo, usos, h('label', {}, 'Válido até'), validade),
+    msg,
+    h('button', { class: 'btn', style: 'margin-top:8px', onclick: async () => {
+      msg.textContent = '';
+      try {
+        await api('/coupons', 'POST', { code: cod.value, kind: tipo.value, value: valor.value, min_order: minimo.value, max_uses: usos.value, expires_at: validade.value });
+        cod.value = ''; valor.value = ''; minimo.value = ''; usos.value = ''; validade.value = '';
+        carrega();
+      } catch (e) { msg.textContent = e.message; }
+    } }, 'Criar cupom'));
 }
 
 // ---------- Configurações ----------

@@ -184,6 +184,24 @@ function broadcast(storeId, event, data) {
 setInterval(() => { for (const set of streams.values()) for (const r of set) r.write(': ping\n\n'); }, 25000).unref();
 
 const STATUSES = ['novo', 'preparando', 'saiu', 'entregue', 'cancelado'];
+db.exec(`CREATE TABLE IF NOT EXISTS coupons(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, code TEXT NOT NULL,
+  kind TEXT NOT NULL, value REAL NOT NULL, min_order REAL DEFAULT 0, max_uses INTEGER DEFAULT 0, used INTEGER DEFAULT 0,
+  expires_at TEXT DEFAULT '', active INTEGER DEFAULT 1, UNIQUE(store_id, code));`);
+for (const col of ['discount REAL DEFAULT 0', "coupon TEXT DEFAULT ''"]) { try { db.exec('ALTER TABLE orders ADD COLUMN ' + col); } catch {} }
+
+// Valida o cupom e devolve o desconto; lança erro com mensagem para o cliente
+function couponDiscount(storeId, rawCode, subtotal) {
+  const code = String(rawCode || '').trim().toUpperCase();
+  if (!code) return null;
+  const c = db.prepare('SELECT * FROM coupons WHERE store_id=? AND code=?').get(storeId, code);
+  if (!c || !c.active) throw new Error('Cupom inválido.');
+  if (c.expires_at && new Date(c.expires_at + 'T23:59:59-03:00') < new Date()) throw new Error('Este cupom expirou.');
+  if (c.max_uses && c.used >= c.max_uses) throw new Error('Este cupom já atingiu o limite de usos.');
+  if (subtotal < c.min_order) throw new Error('Pedido mínimo para este cupom: R$ ' + c.min_order.toFixed(2).replace('.', ','));
+  const raw = c.kind === 'percent' ? subtotal * c.value / 100 : c.value;
+  return { id: c.id, code: c.code, discount: Math.round(Math.min(raw, subtotal) * 100) / 100 };
+}
+
 const orderOut = o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined });
 
-module.exports = { cleanGroups, parseGroups, cleanHours, isOpenNow, PORT, DATA_DIR, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut };
+module.exports = { cleanGroups, parseGroups, cleanHours, isOpenNow, PORT, DATA_DIR, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut, couponDiscount };

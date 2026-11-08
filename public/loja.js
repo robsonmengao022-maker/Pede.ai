@@ -22,6 +22,7 @@ let lines = [];          // itens do carrinho: {id, qty, obs, picks: {grupo: [op
 let quote = null;        // taxa de entrega calculada pelo endereço
 let kind = 'entrega';
 let refreshTotals = () => {};
+let cupom = null;        // {code, discount} validado pelo servidor
 
 async function load() {
   const r = await fetch('/api/public/' + slug);
@@ -148,9 +149,9 @@ const PAYLABEL = { pix: 'Pix', dinheiro: 'Dinheiro', cartao_entrega: 'Cartão na
 
 function checkout(keep) {
   const s = data.store, d = $('dlg');
-  const antes = keep && $('f_name') ? { n: $('f_name').value, p: $('f_phone').value, a: $('f_addr').value, o: $('f_notes').value, pay: $('f_pay').value, c: $('f_change').value } : null;
+  const antes = keep && $('f_name') ? { n: $('f_name').value, p: $('f_phone').value, a: $('f_addr').value, o: $('f_notes').value, pay: $('f_pay').value, c: $('f_change').value, cp: $('f_coupon') ? $('f_coupon').value : '' } : null;
   d.dataset.view = 'checkout';
-  if (!keep) { quote = null; kind = 'entrega'; }
+  if (!keep) { quote = null; kind = 'entrega'; cupom = null; }
   const pays = [['pix', s.payments.pix], ['dinheiro', s.payments.cash], ['cartao_entrega', s.payments.card_delivery], ['link', s.payments.link]].filter(x => x[1]).map(x => x[0]);
   const body = h('div', { class: 'pad' }, h('h3', {}, 'Seu pedido'),
     lines.length ? null : h('p', { class: 'muted' }, 'Carrinho vazio.'),
@@ -172,6 +173,10 @@ function checkout(keep) {
       h('input', { id: 'f_addr', autocomplete: 'street-address', value: antes ? antes.a : ls.get('ad') }),
       h('p', { id: 'qmsg', style: 'color:var(--mute);font-size:13px;margin-top:6px' })),
     h('label', {}, 'Observações do pedido (opcional)'), h('textarea', { id: 'f_notes', rows: 2, maxlength: 250 }, antes ? antes.o : ''),
+    h('label', {}, 'Cupom de desconto (opcional)'),
+    h('div', { class: 'row' }, h('input', { id: 'f_coupon', placeholder: 'Ex: BEMVINDO10', maxlength: 30, style: 'flex:1', value: antes ? antes.cp : (cupom ? cupom.code : '') }),
+      h('button', { class: 'btn ghost', onclick: () => aplicaCupom() }, 'Aplicar')),
+    h('p', { id: 'cmsg', class: 'muted' }),
     h('label', {}, 'Forma de pagamento'),
     h('select', { id: 'f_pay', onchange: e => { $('chBox').hidden = e.target.value !== 'dinheiro'; } }, pays.map(k => h('option', { value: k, selected: antes ? antes.pay === k : k === pays[0] }, PAYLABEL[k]))),
     h('div', { id: 'chBox', hidden: !(antes ? antes.pay === 'dinheiro' : pays[0] === 'dinheiro') }, h('label', {}, 'Troco para quanto? (opcional)'), h('input', { id: 'f_change', placeholder: 'Ex: 50', value: antes ? antes.c : '' })),
@@ -183,19 +188,36 @@ function checkout(keep) {
   d.replaceChildren(body);
   function totals() {
     const fee = kind === 'entrega' && quote ? quote.fee : 0;
+    const desc = cupom ? cupom.discount : 0;
     $('tot').replaceChildren(h('div', { class: 'row' }, h('span', {}, 'Subtotal'), h('span', {}, brl(subtotal()))),
+      desc ? h('div', { class: 'row' }, h('span', {}, 'Desconto (' + cupom.code + ')'), h('span', {}, '-' + brl(desc))) : null,
       fee ? h('div', { class: 'row' }, h('span', {}, 'Entrega'), h('span', {}, brl(fee))) : (kind === 'entrega' ? h('div', { class: 'row' }, h('span', {}, 'Entrega'), h('span', {}, 'a calcular')) : null),
-      h('div', { class: 'row tot' }, h('span', {}, 'Total'), h('span', {}, brl(subtotal() + fee))));
+      h('div', { class: 'row tot' }, h('span', {}, 'Total'), h('span', {}, brl(Math.max(0, subtotal() - desc + fee)))));
   }
   refreshTotals = totals;
   totals();
   if (quote && $('qmsg')) $('qmsg').textContent = `Distância: ${quote.km} km`;
+  if (cupom && $('cmsg')) $('cmsg').textContent = `Cupom ${cupom.code} aplicado.`;
   $('f_addr').addEventListener('blur', quoteAddr);
   $('f_addr').addEventListener('input', () => { quote = null; totals(); });
   if (!pays.length) { $('err').textContent = 'Esta loja ainda não configurou formas de pagamento.'; $('send').disabled = true; }
   if (!s.is_open) { $('err').textContent = 'A loja está fechada no momento.'; $('send').disabled = true; }
   if (!d.open) d.showModal();
   if (!lines.length) d.close();
+}
+
+// Valida o cupom no servidor (pré-visualização); o pedido revalida ao enviar
+async function aplicaCupom() {
+  const code = ($('f_coupon') ? $('f_coupon').value : '').trim().toUpperCase();
+  const msg = $('cmsg');
+  if (!code) { cupom = null; if (msg) msg.textContent = ''; refreshTotals(); return; }
+  try {
+    const r = await fetch(`/api/public/${slug}/coupon?code=${encodeURIComponent(code)}&subtotal=${subtotal()}`);
+    const j = await r.json();
+    if (!r.ok) { cupom = null; if (msg) msg.textContent = j.error; }
+    else { cupom = j; if (msg) msg.textContent = `Cupom ${j.code} aplicado: -${brl(j.discount)}`; }
+  } catch { cupom = null; if (msg) msg.textContent = 'Sem conexão para validar o cupom.'; }
+  refreshTotals();
 }
 
 function lineQty(i, d) {
@@ -225,7 +247,7 @@ async function send() {
   if (kind === 'entrega' && !quote) { await quoteAddr(); if (!quote) return; }
   const btn = $('send'); btn.disabled = true; $('err').textContent = '';
   const body = {
-    kind, customer_name: $('f_name').value, phone: $('f_phone').value, address: $('f_addr').value, notes: $('f_notes').value,
+    kind, customer_name: $('f_name').value, phone: $('f_phone').value, address: $('f_addr').value, notes: $('f_notes').value, coupon: $('f_coupon') ? $('f_coupon').value.trim() : '',
     payment_method: $('f_pay').value, change_for: $('f_change').value,
     items: lines.map(l => ({ id: l.id, qty: l.qty, obs: l.obs, choices: Object.entries(l.picks).map(([group, picks]) => ({ group, picks })) })),
   };

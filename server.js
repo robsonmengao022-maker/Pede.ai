@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut , isOpenNow, cleanHours, cleanGroups, parseGroups } = require('./lib');
 const { receipt } = require('./receipt');
 const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
-const { DATA_DIR } = require('./lib');
+const { DATA_DIR, couponDiscount } = require('./lib');
 const { sendMail, mailReady } = require('./mail');
 
 const codeHash = code => crypto.createHash('sha256').update('pedeai-reset:' + code).digest('hex');
@@ -90,17 +90,29 @@ async function api(req, res, url) {
       if (q.error) return fail(res, 400, q.error);
       fee = q.fee;
     }
-    const total = Math.round((subtotal + fee) * 100) / 100;
+    let discount = 0, couponCode = '', couponId = null;
+    if (str(b.coupon, 30)) {
+      try { const cd = couponDiscount(s.id, b.coupon, subtotal); if (cd) { discount = cd.discount; couponCode = cd.code; couponId = cd.id; } }
+      catch (e) { return fail(res, 400, e.message); }
+    }
+    const total = Math.round((subtotal - discount + fee) * 100) / 100;
     const code = crypto.randomBytes(3).toString('hex').toUpperCase();
-    const r = db.prepare(`INSERT INTO orders(store_id,code,customer_name,phone,kind,address,notes,payment_method,change_for,items_json,subtotal,delivery_fee,total)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(s.id, code, name, phone, kind, kind === 'entrega' ? address : '', str(b.notes, 250), method,
-      method === 'dinheiro' ? str(b.change_for, 20) : '', JSON.stringify(items), subtotal, fee, total);
+    const r = db.prepare(`INSERT INTO orders(store_id,code,customer_name,phone,kind,address,notes,payment_method,change_for,items_json,subtotal,delivery_fee,total,discount,coupon)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(s.id, code, name, phone, kind, kind === 'entrega' ? address : '', str(b.notes, 250), method,
+      method === 'dinheiro' ? str(b.change_for, 20) : '', JSON.stringify(items), subtotal, fee, total, discount, couponCode);
+    if (couponId) db.prepare('UPDATE coupons SET used=used+1 WHERE id=?').run(couponId);
     const order = orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(r.lastInsertRowid));
     broadcast(s.id, 'order', order);
     const out = { code, total, status: 'novo' };
     if (method === 'pix') out.pix = pixPayload({ key: s.pix_key, name: s.pix_name || s.name, city: s.city, amount: total, txid: code });
     if (method === 'link') out.payment_link = s.payment_link;
     return json(res, 201, out);
+  }
+  if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/coupon$/)) && m === 'GET') {
+    const s = db.prepare('SELECT id FROM stores WHERE slug=?').get(g[1]);
+    if (!s) return fail(res, 404, 'Loja não encontrada.');
+    try { return json(res, 200, couponDiscount(s.id, url.searchParams.get('code'), num(url.searchParams.get('subtotal')) || 0)); }
+    catch (e) { return fail(res, 400, e.message); }
   }
   if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/quote$/)) && m === 'GET') {
     const s = db.prepare('SELECT * FROM stores WHERE slug=?').get(g[1]);
@@ -285,6 +297,24 @@ async function api(req, res, url) {
     const st = str((await readBody(req)).status, 20);
     if (!STATUSES.includes(st)) return fail(res, 400, 'Status inválido.');
     db.prepare('UPDATE orders SET status=? WHERE id=? AND store_id=?').run(st, g[1], store.id);
+    return json(res, 200, { ok: true });
+  }
+  if (p === '/api/coupons' && m === 'GET') return json(res, 200, db.prepare('SELECT * FROM coupons WHERE store_id=? ORDER BY id DESC').all(store.id));
+  if (p === '/api/coupons' && m === 'POST') {
+    const b = await readBody(req);
+    const code = str(b.code, 30).trim().toUpperCase().replace(/\s+/g, '');
+    const kind = b.kind === 'fixed' ? 'fixed' : 'percent';
+    const value = num(b.value), min = Math.max(0, num(b.min_order) || 0), max = Math.max(0, Math.floor(num(b.max_uses) || 0));
+    const exp = /^\d{4}-\d{2}-\d{2}$/.test(String(b.expires_at || '')) ? b.expires_at : '';
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) return fail(res, 400, 'Código: use de 3 a 30 letras ou números, sem espaço.');
+    if (!(value > 0) || (kind === 'percent' && value > 100)) return fail(res, 400, kind === 'percent' ? 'Informe um percentual entre 1 e 100.' : 'Informe o valor do desconto.');
+    if (db.prepare('SELECT 1 FROM coupons WHERE store_id=? AND code=?').get(store.id, code)) return fail(res, 409, 'Já existe um cupom com este código.');
+    const r = db.prepare('INSERT INTO coupons(store_id,code,kind,value,min_order,max_uses,expires_at) VALUES(?,?,?,?,?,?,?)')
+      .run(store.id, code, kind, Math.round(value * 100) / 100, min, max, exp);
+    return json(res, 201, { id: Number(r.lastInsertRowid) });
+  }
+  if ((g = p.match(/^\/api\/coupons\/(\d+)$/)) && m === 'DELETE') {
+    db.prepare('DELETE FROM coupons WHERE id=? AND store_id=?').run(g[1], store.id);
     return json(res, 200, { ok: true });
   }
   if (p === '/api/billing' && m === 'GET') {
