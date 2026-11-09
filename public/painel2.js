@@ -183,6 +183,19 @@ async function buscaCep(cep) {
   } catch { if (msg) msg.textContent = 'Não consegui buscar o CEP. Preencha manualmente.'; }
 }
 
+function mpBloco() {
+  const volta = new URLSearchParams(location.search).get('mp');
+  const aviso = volta === 'ok' ? 'Conta conectada! Os próximos Pix caem na sua conta e são confirmados sozinhos.' : volta === 'erro' ? 'Não consegui conectar sua conta do Mercado Pago. Tente de novo.' : '';
+  const conectado = !!me.mp_conectado;
+  return h('div', { style: 'margin:8px 0' },
+    h('p', { style: 'margin:0 0 8px' }, conectado
+      ? 'Conta do Mercado Pago conectada. Os Pix são criados na sua conta e confirmados automaticamente.'
+      : 'Conecte sua conta do Mercado Pago para o Pix ser confirmado sozinho. Sem conectar, você confirma o Pix manualmente no painel.'),
+    aviso ? h('p', { class: 'muted' }, aviso) : null,
+    conectado
+      ? h('button', { class: 'btn g s', onclick: async () => { if (!confirm('Desconectar a conta? Os Pix voltam a ser confirmados manualmente.')) return; await api('/mp/desconectar', 'POST'); me = await api('/me'); render(); } }, 'Desconectar')
+      : h('button', { class: 'btn s', onclick: async () => { try { const j = await api('/mp/conectar'); location.href = j.url; } catch (e) { alert(e.message); } } }, 'Conectar minha conta do Mercado Pago'));
+}
 function comandaFoto(campo, st) {
   return e => {
     const f = e.target.files[0]; if (!f) return;
@@ -239,6 +252,8 @@ function viewConfig() {
     h('h3', { style: 'margin:18px 0 0' }, 'Taxa de entrega por km'),
     h('p', { class: 'muted', style: 'margin:4px 0' }, 'Distância em linha reta, do endereço da loja ao do cliente. Deixe em branco os km em que você não entrega. Salve o endereço da loja acima para o cálculo funcionar.'),
     h('div', { class: 'grid' }, Array.from({ length: 15 }, (_, i) => h('div', {}, h('label', {}, (i + 1) + ' km'), h('input', { id: 's_km' + (i + 1), inputmode: 'decimal', value: kmFees[i] == null ? '' : String(kmFees[i]).replace('.', ','), placeholder: 'R$' })))),
+    h('h3', { style: 'margin:18px 0 0' }, 'Pix automático (Mercado Pago)'),
+    mpBloco(),
     h('h3', { style: 'margin:18px 0 0' }, 'Comanda impressa'),
     h('p', { class: 'muted', style: 'margin:4px 0' }, 'A logo aparece no topo da comanda. A capa é a imagem larga que fica acima da logo. Use JPG, PNG ou WebP até 1 MB.'),
     h('div', { class: 'grid' }, campoImagem('s_logo', 'Logo da loja', s.logo_url), campoImagem('s_capa', 'Capa da comanda', s.capa_url)),

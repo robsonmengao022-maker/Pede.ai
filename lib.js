@@ -153,7 +153,9 @@ const publicStore = s => ({
   },
 });
 const privateStore = s => {
-  const { pass_hash, ...rest } = s; return rest;
+  // tokens do Mercado Pago nunca saem do servidor
+  const { pass_hash, mp_access_token, mp_refresh_token, ...rest } = s;
+  return { ...rest, mp_conectado: !!mp_access_token };
 };
 
 // ---------- Pix "copia e cola" (BR Code estático, dinheiro cai direto na conta do lojista) ----------
@@ -184,6 +186,7 @@ function broadcast(storeId, event, data) {
 setInterval(() => { for (const set of streams.values()) for (const r of set) r.write(': ping\n\n'); }, 25000).unref();
 
 const STATUSES = ['novo', 'preparando', 'saiu', 'entregue', 'cancelado'];
+db.exec(`CREATE TABLE IF NOT EXISTS mp_states(state TEXT PRIMARY KEY, store_id INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')))`);
 db.exec(`CREATE TABLE IF NOT EXISTS coupons(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, code TEXT NOT NULL,
   kind TEXT NOT NULL, value REAL NOT NULL, min_order REAL DEFAULT 0, max_uses INTEGER DEFAULT 0, used INTEGER DEFAULT 0,
   expires_at TEXT DEFAULT '', active INTEGER DEFAULT 1, UNIQUE(store_id, code));`);
@@ -202,7 +205,7 @@ function couponDiscount(storeId, rawCode, subtotal) {
   return { id: c.id, code: c.code, discount: Math.round(Math.min(raw, subtotal) * 100) / 100 };
 }
 
-for (const col of ['uf TEXT DEFAULT \'\'', 'bairro TEXT DEFAULT \'\'', 'numero TEXT DEFAULT \'\'', 'cep TEXT DEFAULT \'\'', 'logo_url TEXT DEFAULT \'\'', 'capa_url TEXT DEFAULT \'\'', 'print_media INTEGER DEFAULT 1']) { try { db.exec('ALTER TABLE stores ADD COLUMN ' + col); } catch {} }
+for (const col of ['uf TEXT DEFAULT \'\'', 'bairro TEXT DEFAULT \'\'', 'numero TEXT DEFAULT \'\'', 'cep TEXT DEFAULT \'\'', 'logo_url TEXT DEFAULT \'\'', 'capa_url TEXT DEFAULT \'\'', 'print_media INTEGER DEFAULT 1', 'mp_user_id TEXT DEFAULT \'\'', 'mp_access_token TEXT DEFAULT \'\'', 'mp_refresh_token TEXT DEFAULT \'\'', 'mp_expires_at INTEGER DEFAULT 0']) { try { db.exec('ALTER TABLE stores ADD COLUMN ' + col); } catch {} }
 
 const orderOut = o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined });
 

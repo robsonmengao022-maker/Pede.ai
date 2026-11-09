@@ -12,7 +12,18 @@ const { DATA_DIR, couponDiscount } = require('./lib');
 const pixPago = o => o.payment_method !== 'pix' || ['approved', 'manual'].includes(o.mp_status);
 // Logo e capa só podem apontar para arquivos já enviados pelo painel
 const upl = v => /^\/uploads\/[a-f0-9]+\.(jpg|png|webp)$/.test(String(v || '')) ? String(v) : '';
-const { mpReady, criarPix, buscarPagamento } = require('./mp');
+const { oauthReady, cifra, decifra, urlAutorizacao, trocaCodigo, renovaToken, criarPix, buscarPagamento } = require('./mp');
+// Token Mercado Pago da loja (descriptografado); renova sozinho quando está perto de vencer
+async function tokenMP(s) {
+  if (!s || !s.mp_access_token || !oauthReady()) return null;
+  try {
+    if (s.mp_expires_at - Date.now() > 5 * 60e3) return decifra(s.mp_access_token);
+    const t = await renovaToken(decifra(s.mp_refresh_token));
+    db.prepare('UPDATE stores SET mp_access_token=?, mp_refresh_token=?, mp_expires_at=? WHERE id=?')
+      .run(cifra(t.access_token), cifra(t.refresh_token || decifra(s.mp_refresh_token)), t.expires_at, s.id);
+    return t.access_token;
+  } catch (e) { console.error('Mercado Pago (token da loja):', e.message); return null; }
+}
 const { sendMail, mailReady } = require('./mail');
 
 const codeHash = code => crypto.createHash('sha256').update('pedeai-reset:' + code).digest('hex');
@@ -114,9 +125,10 @@ async function api(req, res, url) {
     const order = orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(r.lastInsertRowid));
     broadcast(s.id, 'order', order);
     let mpPix = '';
-    if (method === 'pix' && mpReady()) {
+    const tkMP = method === 'pix' ? await tokenMP(s) : null;
+    if (tkMP) {
       try {
-        const pay = await criarPix({ amount: total, description: `Pedido ${code} - ${s.name}`, email: `pedido${code.toLowerCase()}@pedeai.app`, idem: `${code}-${r.lastInsertRowid}` });
+        const pay = await criarPix({ token: tkMP, amount: total, description: `Pedido ${code} - ${s.name}`, email: `pedido${code.toLowerCase()}@pedeai.app`, idem: `${code}-${r.lastInsertRowid}` });
         db.prepare('UPDATE orders SET mp_payment_id=?, mp_status=? WHERE id=?').run(pay.id, pay.status, r.lastInsertRowid);
         mpPix = pay.qr;
       } catch (e) { console.error('Mercado Pago (Pix):', e.message); }
@@ -126,12 +138,29 @@ async function api(req, res, url) {
     if (method === 'link') out.payment_link = s.payment_link;
     return json(res, 201, out);
   }
+  if (p === '/api/mp/callback' && m === 'GET') {
+    // volta do Mercado Pago depois que o lojista autoriza a conta
+    const volta = q => { res.writeHead(302, { Location: '/painel?mp=' + q }); res.end(); };
+    const code = url.searchParams.get('code') || '', st = url.searchParams.get('state') || '';
+    const row = st ? db.prepare("SELECT store_id FROM mp_states WHERE state=? AND created_at > datetime('now','-1 hour')").get(st) : null;
+    db.prepare('DELETE FROM mp_states WHERE state=?').run(st);
+    if (url.searchParams.get('error') || !code || !row || !oauthReady()) return volta('erro');
+    try {
+      const t = await trocaCodigo(code);
+      db.prepare('UPDATE stores SET mp_user_id=?, mp_access_token=?, mp_refresh_token=?, mp_expires_at=? WHERE id=?')
+        .run(t.user_id, cifra(t.access_token), cifra(t.refresh_token), t.expires_at, row.store_id);
+      return volta('ok');
+    } catch (e) { console.error('Mercado Pago (conectar):', e.message); return volta('erro'); }
+  }
   if (p === '/api/mercadopago/webhook' && m === 'POST') {
     const b = await readBody(req).catch(() => ({}));
     const id = (b.data && b.data.id) || url.searchParams.get('data.id') || url.searchParams.get('id');
-    if (id && mpReady()) {
+    const ped = id ? db.prepare('SELECT store_id FROM orders WHERE mp_payment_id=?').get(String(id)) : null;
+    const dono = ped ? db.prepare('SELECT * FROM stores WHERE id=?').get(ped.store_id) : null;
+    const tk = dono ? await tokenMP(dono) : null;
+    if (tk) {
       try {
-        const pay = await buscarPagamento(id);
+        const pay = await buscarPagamento(tk, id);
         db.prepare('UPDATE orders SET mp_status=? WHERE mp_payment_id=?').run(pay.status, pay.id);
         const o = db.prepare('SELECT * FROM orders WHERE mp_payment_id=?').get(pay.id);
         if (o) broadcast(o.store_id, 'order', orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(o.id)));
@@ -269,6 +298,17 @@ async function api(req, res, url) {
     const name = crypto.randomBytes(12).toString('hex') + '.' + (mm[1] === 'jpeg' ? 'jpg' : mm[1]);
     fs.writeFileSync(path.join(DATA_DIR, 'uploads', name), buf);
     return json(res, 201, { url: '/uploads/' + name });
+  }
+  if (p === '/api/mp/conectar' && m === 'GET') {
+    if (!oauthReady()) return fail(res, 503, 'A conexão com o Mercado Pago ainda não está configurada no servidor.');
+    const state = crypto.randomBytes(16).toString('hex');
+    db.prepare("DELETE FROM mp_states WHERE created_at < datetime('now','-1 hour')").run();
+    db.prepare('INSERT INTO mp_states(state,store_id) VALUES(?,?)').run(state, store.id);
+    return json(res, 200, { url: urlAutorizacao(state) });
+  }
+  if (p === '/api/mp/desconectar' && m === 'POST') {
+    db.prepare("UPDATE stores SET mp_user_id='', mp_access_token='', mp_refresh_token='', mp_expires_at=0 WHERE id=?").run(store.id);
+    return json(res, 200, { ok: true });
   }
   if (p === '/api/me' && m === 'GET') return json(res, 200, privateStore(store));
   if (p === '/api/me' && m === 'PUT') {
