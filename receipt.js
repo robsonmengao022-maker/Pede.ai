@@ -16,7 +16,6 @@ function receipt(store, o) {
 @page{size:80mm auto;margin:0}
 *{box-sizing:border-box}
 body{width:72mm;margin:0 auto;padding:2mm 0 6mm;font:12px/1.35 'Courier New',monospace;color:#000}
-.capa{display:block;width:100%;max-height:30mm;object-fit:cover;margin-bottom:2mm}
 .logo{display:block;margin:0 auto 2mm;max-width:40mm;max-height:22mm;object-fit:contain}
 .c{text-align:center}
 .nome{font-size:16px;font-weight:bold;text-align:center}
@@ -34,7 +33,6 @@ body{width:72mm;margin:0 auto;padding:2mm 0 6mm;font:12px/1.35 'Courier New',mon
 .pg{font-size:13px}
 </style>
 <body>
-${midia && store.capa_url ? `<img class="capa" src="${esc(store.capa_url)}">` : ''}
 ${midia && store.logo_url ? `<img class="logo" src="${esc(store.logo_url)}">` : ''}
 <div class="nome">${esc(store.name)}</div>
 ${enderecoLoja ? `<div class="c">${esc(enderecoLoja)}</div>` : ''}

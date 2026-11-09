@@ -255,9 +255,9 @@ function viewConfig() {
     h('h3', { style: 'margin:18px 0 0' }, 'Pix automático (Mercado Pago)'),
     mpBloco(),
     h('h3', { style: 'margin:18px 0 0' }, 'Comanda impressa'),
-    h('p', { class: 'muted', style: 'margin:4px 0' }, 'A logo aparece no topo da comanda. A capa é a imagem larga que fica acima da logo. Use JPG, PNG ou WebP até 1 MB.'),
+    h('p', { class: 'muted', style: 'margin:4px 0' }, 'A logo aparece no topo da comanda impressa. A capa aparece só na página da loja, não é impressa. Use JPG, PNG ou WebP até 1 MB.'),
     h('div', { class: 'grid' }, campoImagem('s_logo', 'Logo da loja', s.logo_url), campoImagem('s_capa', 'Capa da comanda', s.capa_url)),
-    chk('s_media', 'Imprimir logo e capa na comanda', s.print_media !== 0),
+    chk('s_media', 'Imprimir logo na comanda', s.print_media !== 0),
     h('div', { class: 'msg', id: 's_msg' }),
     h('button', { class: 'btn', onclick: async () => {
       const g = id => $(id).value, c = id => $(id).checked;
