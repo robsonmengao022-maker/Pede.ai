@@ -32,8 +32,17 @@ async function load() {
   data = await r.json();
   document.title = data.store.name + ' — Cardápio';
   const s = data.store;
+  // capa de borda a borda; logo quadrada sobreposta, como no Insta Delivery
+  const capa = s.capa_url
+    ? h('img', { src: s.capa_url, alt: '', style: 'display:block;width:calc(100% + 32px);height:200px;object-fit:cover;margin:-20px -16px 0' })
+    : h('div', { style: 'display:block;width:calc(100% + 32px);height:120px;margin:-20px -16px 0;background:linear-gradient(135deg,var(--brand),#6b3a8f)' });
+  const sigla = s.name.split(/\s+/).filter(Boolean).map(p => p[0]).join('').slice(0, 2).toUpperCase();
+  const logoBox = h('div', { style: 'position:relative;width:96px;height:96px;margin:-48px 0 0 0;border-radius:18px;border:4px solid #fff;overflow:hidden;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:28px;color:var(--brand)' },
+    s.logo_url ? h('img', { src: s.logo_url, alt: '', style: 'width:100%;height:100%;object-fit:cover' }) : sigla);
   $('hd').replaceChildren(...[
-    h('h1', {}, s.name),
+    capa,
+    logoBox,
+    h('h1', { style: 'margin:10px 0 4px' }, s.name),
     s.store_notice ? h('p', { style: 'color:var(--brand);font-weight:600' }, s.store_notice) : null,
     s.prep_time ? h('p', {}, 'Tempo de preparo: ' + s.prep_time) : null,
     h('p', {}, [[s.address, s.numero].filter(ok).join(', '), s.bairro, [s.city, s.uf].filter(ok).join(' / ')].filter(ok).join(' · ')),

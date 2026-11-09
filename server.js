@@ -11,7 +11,7 @@ const { DATA_DIR, couponDiscount } = require('./lib');
 // Pix só conta como pago depois de confirmado (Mercado Pago ou confirmação manual do lojista)
 const pixPago = o => o.payment_method !== 'pix' || ['approved', 'manual'].includes(o.mp_status);
 // Logo e capa só podem apontar para arquivos já enviados pelo painel
-const upl = v => /^\/uploads\/[a-f0-9]+\.(jpg|png|webp)$/.test(String(v || '')) ? String(v) : '';
+const upl = v => /^\/uploads\/[a-f0-9]{24}\.(jpg|png|webp)$/.test(String(v || '')) ? String(v) : '';
 const { oauthReady, cifra, decifra, urlAutorizacao, trocaCodigo, renovaToken, criarPix, buscarPagamento } = require('./mp');
 // Token Mercado Pago da loja (descriptografado); renova sozinho quando está perto de vencer
 async function tokenMP(s) {
