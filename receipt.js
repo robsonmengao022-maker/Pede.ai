@@ -58,7 +58,8 @@ ${o.delivery_fee ? `<div class="r"><span>Taxa de entrega</span><span>${brl(o.del
 ${o.payment_method === 'dinheiro' && o.change_for ? `<div class="pg">Troco para: ${esc(o.change_for)}</div>` : ''}
 ${o.notes ? `<div class="sep"></div><div class="b">OBS DO PEDIDO:</div><div>${esc(o.notes)}</div>` : ''}
 <div class="sep"></div>
-<div class="c">Obrigado pela preferência!</div>
+<div class="c b">Obrigado por realizar seu pedido!</div>
+<div class="c">Obrigado por escolher ${esc(store.name)}.</div>
 <div class="c" style="font-size:10px;margin-top:3px">Pedeaí</div>
 <script>addEventListener('load',()=>{setTimeout(()=>{print()},150)});</script></body></html>`;
 }
