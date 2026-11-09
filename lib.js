@@ -144,7 +144,7 @@ function isOpenNow(s) {
   return false;
 }
 const publicStore = s => ({
-  slug: s.slug, name: s.name, whatsapp: s.whatsapp, address: s.address, city: s.city, is_open: isOpenNow(s),
+  slug: s.slug, name: s.name, whatsapp: s.whatsapp, address: s.address, numero: s.numero || '', bairro: s.bairro || '', city: s.city, uf: s.uf || '', is_open: isOpenNow(s),
   prep_time: s.prep_time || '', store_notice: s.store_notice || '', hours: s.hours || '',
   delivery_fee: s.delivery_fee, min_order: s.min_order,
   payments: {
@@ -201,6 +201,8 @@ function couponDiscount(storeId, rawCode, subtotal) {
   const raw = c.kind === 'percent' ? subtotal * c.value / 100 : c.value;
   return { id: c.id, code: c.code, discount: Math.round(Math.min(raw, subtotal) * 100) / 100 };
 }
+
+for (const col of ['uf TEXT DEFAULT \'\'', 'bairro TEXT DEFAULT \'\'', 'numero TEXT DEFAULT \'\'', 'cep TEXT DEFAULT \'\'']) { try { db.exec('ALTER TABLE stores ADD COLUMN ' + col); } catch {} }
 
 const orderOut = o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined });
 

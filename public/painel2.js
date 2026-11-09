@@ -158,8 +158,12 @@ function viewConfig() {
     h('div', { class: 'grid' },
       h('div', {}, h('label', {}, 'Nome da loja'), h('input', { id: 's_name', value: s.name })),
       h('div', {}, h('label', {}, 'WhatsApp'), h('input', { id: 's_wa', value: s.whatsapp })),
-      h('div', {}, h('label', {}, 'Endereço'), h('input', { id: 's_addr', value: s.address })),
-      h('div', {}, h('label', {}, 'Cidade'), h('input', { id: 's_city', value: s.city })),
+      h('div', {}, h('label', {}, 'CEP'), h('input', { id: 's_cep', value: s.cep || '', inputmode: 'numeric', placeholder: '00000-000' })),
+      h('div', {}, h('label', {}, 'Rua / Avenida'), h('input', { id: 's_addr', value: s.address || '' })),
+      h('div', {}, h('label', {}, 'Número'), h('input', { id: 's_num', value: s.numero || '' })),
+      h('div', {}, h('label', {}, 'Bairro'), h('input', { id: 's_bairro', value: s.bairro || '' })),
+      h('div', {}, h('label', {}, 'Cidade (município)'), h('input', { id: 's_city', value: s.city || '' })),
+      h('div', {}, h('label', {}, 'Estado (UF)'), h('select', { id: 's_uf' }, ['', 'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'].map(u => h('option', { value: u, selected: u === (s.uf || '') }, u || 'Selecione')))),
       h('div', {}, h('label', {}, 'Pedido mínimo (R$)'), h('input', { id: 's_min', inputmode: 'decimal', value: String(s.min_order).replace('.', ',') }))),
     chk('s_open', 'Loja aberta (aceitando pedidos)', s.is_open),
     h('h3', { style: 'margin:18px 0 0' }, 'Formas de pagamento'),
@@ -187,7 +191,7 @@ function viewConfig() {
     h('button', { class: 'btn', onclick: async () => {
       const g = id => $(id).value, c = id => $(id).checked;
       try {
-        const saved = await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), city: g('s_city'), min_order: g('s_min'), is_open: c('s_open'),
+        const saved = await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), numero: g('s_num'), bairro: g('s_bairro'), uf: g('s_uf'), cep: g('s_cep'), city: g('s_city'), min_order: g('s_min'), is_open: c('s_open'),
           accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), prep_time: g('s_prep'), store_notice: g('s_notice'), hours: Array.from({ length: 7 }, (_, i) => ({ on: c('h_on' + i), open: g('h_o' + i), close: g('h_c' + i) })), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
         me = await api('/me'); $('s_msg').className = saved.warning ? 'msg err' : 'msg ok'; $('s_msg').textContent = saved.warning || 'Salvo!';
       } catch (e) { $('s_msg').className = 'msg err'; $('s_msg').textContent = e.message; }

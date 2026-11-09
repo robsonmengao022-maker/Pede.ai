@@ -14,12 +14,15 @@ const { sendMail, mailReady } = require('./mail');
 const codeHash = code => crypto.createHash('sha256').update('pedeai-reset:' + code).digest('hex');
 
 // Calcula a taxa de entrega da loja para um endereço (modo: tabela por km, em linha reta)
+// Endereço completo para localizar no mapa: rua, número, bairro, cidade - UF
+const enderecoCompleto = x => [x.address, x.numero, x.bairro, [x.city, x.uf].filter(Boolean).join(' - '), 'Brasil'].filter(Boolean).join(', ');
+
 async function quoteDelivery(store, address) {
   const fees = parseFees(store.km_fees);
   if (!fees) return { error: 'Esta loja ainda não configurou a taxa de entrega. Use a opção de retirada ou fale com a loja.' };
   if (store.lat == null || store.lng == null) return { error: 'A loja ainda não tem o endereço localizado no mapa. Peça para o lojista salvar o endereço nas configurações.' };
-  const city = store.city ? `, ${store.city}` : '';
-  const point = await geocode(`${address}${city}, Brasil`);
+  const area = [store.city, store.uf].filter(Boolean).join(' - ');
+  const point = await geocode(`${address}${area ? ', ' + area : ''}, Brasil`);
   if (!point) return { error: 'Não encontrei esse endereço. Confira rua, número, bairro e cidade.' };
   const km = kmFromPoints({ lat: store.lat, lng: store.lng }, point);
   if (km > MAX_KM) return { error: `Endereço fora da área de entrega (até ${MAX_KM} km).` };
@@ -243,6 +246,7 @@ async function api(req, res, url) {
     const b = await readBody(req);
     const f = {
       name: str(b.name, 60) || store.name, whatsapp: str(b.whatsapp, 30), address: str(b.address, 200), city: str(b.city, 60),
+      uf: str(b.uf, 2).toUpperCase(), bairro: str(b.bairro, 60), numero: str(b.numero, 10), cep: str(b.cep, 9),
       pix_key: str(b.pix_key, 100), pix_name: str(b.pix_name, 60),
       accepts_pix: b.accepts_pix ? 1 : 0, accepts_cash: b.accepts_cash ? 1 : 0, accepts_card_delivery: b.accepts_card_delivery ? 1 : 0,
       accepts_link: b.accepts_link ? 1 : 0, payment_link: okUrl(str(b.payment_link, 500)),
@@ -250,7 +254,7 @@ async function api(req, res, url) {
     };
     let warning = '';
     if ((f.address || f.city) && (f.address !== store.address || f.city !== store.city || store.lat == null)) {
-      const pt = await geocode(`${f.address}, ${f.city}, Brasil`);
+      const pt = await geocode(enderecoCompleto(f));
       f.lat = pt ? pt.lat : null;
       f.lng = pt ? pt.lng : null;
       if (!pt) warning = 'Não consegui localizar o endereço da loja no mapa. Confira rua, número e cidade e salve de novo.';

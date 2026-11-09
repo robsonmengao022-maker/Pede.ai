@@ -34,7 +34,7 @@ async function load() {
     h('h1', {}, s.name),
     s.store_notice ? h('p', { style: 'color:var(--brand);font-weight:600' }, s.store_notice) : null,
     s.prep_time ? h('p', {}, 'Tempo de preparo: ' + s.prep_time) : null,
-    h('p', {}, [s.address, s.city].filter(Boolean).join(' · ')),
+    h('p', {}, [[s.address, s.numero].filter(Boolean).join(', '), s.bairro, [s.city, s.uf].filter(Boolean).join(' / ')].filter(Boolean).join(' · ')),
     h('span', { class: 'badge ' + (s.is_open ? 'open' : 'closed') }, s.is_open ? 'Aberto agora' : 'Fechado no momento'),
     s.delivery_fee ? h('p', {}, 'Pedido mínimo: ' + brl(s.min_order)) : (s.min_order ? h('p', {}, 'Pedido mínimo: ' + brl(s.min_order)) : null)
   );
