@@ -18,18 +18,21 @@ async function viewMenu() {
     image_url: $('p_img') ? $('p_img').value : draft.image_url });
 
   function drawGroups() {
-    return h('div', {}, groups.map((g, gi) => h('div', { class: 'card', style: 'background:var(--bg);margin:10px 0' },
-      h('div', { class: 'row' }, h('b', {}, 'Grupo ' + (gi + 1)), h('button', { class: 'btn r s', onclick: () => { draft = lerDraft(); groups.splice(gi, 1); drawForm(true); } }, 'Remover grupo')),
+    return h('div', {}, groups.map((g, gi) => h('div', { class: 'card', style: 'background:var(--bg);margin:10px 0;display:flex;flex-direction:column;gap:8px' },
+      h('div', { class: 'row', style: 'justify-content:space-between' }, h('b', {}, g.name || ('Grupo ' + (gi + 1))),
+        h('button', { class: 'btn r s', onclick: () => { draft = lerDraft(); groups.splice(gi, 1); drawForm(true); } }, 'Remover')),
+      h('div', {}, h('label', {}, 'Nome do grupo'), h('input', { value: g.name, placeholder: 'Ex.: Adicionais', oninput: e => { g.name = e.target.value; } })),
       h('div', { class: 'grid' },
-        h('div', {}, h('label', {}, 'Nome do grupo (ex.: Adicionais, Escolha a bebida)'), h('input', { value: g.name, oninput: e => { g.name = e.target.value; } })),
-        h('div', { class: 'grid' },
-          h('div', {}, h('label', {}, 'Mínimo de escolhas'), h('input', { inputmode: 'numeric', value: String(g.min), oninput: e => { g.min = Number(e.target.value) || 0; } })),
-          h('div', {}, h('label', {}, 'Máximo de escolhas'), h('input', { inputmode: 'numeric', value: String(g.max), oninput: e => { g.max = Number(e.target.value) || 1; } })))),
-      g.items.map((it, ii) => h('div', { class: 'row', style: 'margin:6px 0;flex-wrap:nowrap' },
-        h('input', { value: it.name, placeholder: 'Ex.: Bacon', style: 'flex:2;min-width:0', oninput: e => { it.name = e.target.value; } }),
-        h('input', { value: it.price ? String(it.price).replace('.', ',') : '', placeholder: 'R$ 0', inputmode: 'decimal', style: 'flex:1;min-width:0', oninput: e => { it.price = Number(String(e.target.value).replace(',', '.')) || 0; } }),
-        h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); g.items.splice(ii, 1); drawForm(true); } }, '✕'))),
-      h('button', { class: 'btn g s', style: 'margin-top:6px', onclick: () => { draft = lerDraft(); g.items.push({ name: '', price: 0 }); drawForm(true); } }, '+ Opção'))));
+        h('div', {}, h('label', {}, 'Escolhas mínimas'), h('input', { inputmode: 'numeric', value: String(g.min), oninput: e => { g.min = Number(e.target.value) || 0; } })),
+        h('div', {}, h('label', {}, 'Escolhas máximas'), h('input', { inputmode: 'numeric', value: String(g.max), oninput: e => { g.max = Number(e.target.value) || 1; } }))),
+      h('small', { class: 'muted' }, g.max === 1 ? 'O cliente escolhe uma opção (ex.: combo).' : 'O cliente pode marcar até ' + g.max + ' opções.'),
+      h('label', {}, 'Opções'),
+      g.items.map((it, ii) => h('div', { style: 'border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px' },
+        h('input', { value: it.name, placeholder: 'Nome (ex.: Bacon)', oninput: e => { it.name = e.target.value; } }),
+        h('div', { class: 'row', style: 'flex-wrap:nowrap;gap:6px' },
+          h('input', { value: it.price ? String(it.price).replace('.', ',') : '', placeholder: 'Preço extra (0 = grátis)', inputmode: 'decimal', style: 'flex:1;min-width:0', oninput: e => { it.price = Number(String(e.target.value).replace(',', '.')) || 0; } }),
+          h('button', { class: 'btn r s', onclick: () => { draft = lerDraft(); g.items.splice(ii, 1); drawForm(true); } }, 'Excluir')))),
+      h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); g.items.push({ name: '', price: 0 }); drawForm(true); } }, '+ Adicionar opção'))));
   }
 
   function fotoChange(e) {
@@ -48,26 +51,30 @@ async function viewMenu() {
   function drawForm(fresh) {
     if (!fresh && $('p_name')) draft = lerDraft();
     const p = draft;
-    form.replaceChildren(h('b', {}, editing ? 'Editar produto' : 'Novo produto'),
-      h('div', { class: 'grid' },
-        h('div', {}, h('label', {}, 'Nome'), h('input', { id: 'p_name', value: p.name || '' })),
-        h('div', {}, h('label', {}, 'Preço (R$)'), h('input', { id: 'p_price', inputmode: 'decimal', value: p.price != null && p.price !== '' ? String(p.price).replace('.', ',') : '' }))),
-      h('label', {}, 'Descrição (ingredientes)'), h('input', { id: 'p_desc', value: p.description || '' }),
-      h('div', { class: 'grid' },
-        h('div', {}, h('label', {}, 'Categoria'), h('select', { id: 'p_cat' }, h('option', { value: '' }, 'Sem categoria'), m.categories.map(c => h('option', { value: c.id, selected: String(c.id) === String(p.category_id) }, c.name)))),
-        h('div', {}, h('label', {}, 'Foto do produto'),
-          h('div', { class: 'row', style: 'justify-content:flex-start' },
-            p.image_url ? h('img', { id: 'p_prev', src: p.image_url, alt: '', style: IMG_STYLE }) : h('span', { id: 'p_prev', class: 'muted' }, 'sem foto'),
-            h('label', { class: 'btn g s', style: 'cursor:pointer' }, 'Escolher da galeria', h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: fotoChange }))))),
+    form.replaceChildren(
+      h('h2', { style: 'font-size:18px;margin:0' }, editing ? 'Editar item' : 'Novo item'),
+      h('p', { class: 'muted', style: 'margin:4px 0 12px' }, 'Preencha as três partes. Só nome e preço são obrigatórios.'),
+      h('b', {}, '1. Informações'),
+      h('div', { style: 'display:flex;flex-direction:column;gap:8px;margin:6px 0 14px' },
+        h('div', {}, h('label', {}, 'Nome do item'), h('input', { id: 'p_name', value: p.name || '', placeholder: 'Ex.: X-Burger' })),
+        h('div', {}, h('label', {}, 'Preço (R$)'), h('input', { id: 'p_price', inputmode: 'decimal', value: p.price != null && p.price !== '' ? String(p.price).replace('.', ',') : '', placeholder: 'Ex.: 25,90' })),
+        h('div', {}, h('label', {}, 'Descrição (ingredientes, opcional)'), h('input', { id: 'p_desc', value: p.description || '' })),
+        h('div', {}, h('label', {}, 'Categoria'), h('select', { id: 'p_cat' }, h('option', { value: '' }, 'Sem categoria'), m.categories.map(c => h('option', { value: c.id, selected: String(c.id) === String(p.category_id) }, c.name))))),
+      h('b', {}, '2. Foto (opcional)'),
+      h('div', { class: 'row', style: 'justify-content:flex-start;margin:6px 0 14px' },
+        p.image_url ? h('img', { id: 'p_prev', src: p.image_url, alt: '', style: IMG_STYLE }) : h('span', { id: 'p_prev', class: 'muted' }, 'sem foto'),
+        h('label', { class: 'btn g s', style: 'cursor:pointer' }, 'Escolher da galeria', h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: fotoChange }))),
       h('input', { id: 'p_img', type: 'hidden', value: p.image_url || '' }),
-      h('h3', { style: 'margin:16px 0 0' }, 'Adicionais e combos'),
-      h('p', { class: 'muted', style: 'margin:4px 0' }, 'Crie um grupo para cada escolha. Adicionais: "Adicionais", mínimo 0, máximo 3, com Bacon +R$ 4 e Cream cheese +R$ 3. Combo: "Escolha a bebida", mínimo 1, máximo 1, com as bebidas e preço zero.'),
+      h('b', {}, '3. Adicionais e combos (opcional)'),
+      h('p', { class: 'muted', style: 'margin:4px 0 8px' }, 'Adicionais são extras que o cliente marca (ex.: bacon). Combos são escolhas obrigatórias (ex.: bebida).'),
+      h('div', { class: 'row', style: 'flex-wrap:wrap;gap:6px' },
+        h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); groups.push({ name: 'Adicionais', min: 0, max: 3, items: [] }); drawForm(true); } }, '+ Adicionais'),
+        h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); groups.push({ name: 'Combo', min: 1, max: 1, items: [] }); drawForm(true); } }, '+ Combo')),
       drawGroups(),
-      h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); groups.push({ name: '', min: 0, max: 1, items: [] }); drawForm(true); } }, '+ Adicionar grupo'),
       h('div', { class: 'msg err', id: 'p_err' }),
-      h('div', { class: 'row', style: 'justify-content:flex-start;margin-top:10px' },
-        h('button', { class: 'btn', onclick: saveProduct }, editing ? 'Salvar produto' : 'Adicionar produto'),
-        editing ? h('button', { class: 'btn g', onclick: () => { editing = null; draft = {}; groups = []; drawForm(true); } }, 'Cancelar') : null));
+      h('div', { class: 'row', style: 'justify-content:flex-start;margin-top:10px;gap:8px' },
+        h('button', { class: 'btn', onclick: saveProduct }, 'Salvar item'),
+        h('button', { class: 'btn g', onclick: () => { editing = null; draft = {}; groups = []; drawForm(true); } }, editing ? 'Cancelar edição' : 'Limpar')));
   }
 
   async function saveProduct() {
