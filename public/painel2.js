@@ -161,13 +161,16 @@ function cuponsCard() {
 // ---------- Configurações ----------
 // Lista de horários de 30 em 30 minutos (mais simples no celular que o relógio)
 // Horário em lista (de 30 em 30 min, mais 23:59), para o lojista escolher sem digitar
-function horaSel(valor, aoMudar) {
+function horaSel(valor, aoMudar, fechamento) {
   const opts = [];
   for (let t = 0; t < 1440; t += 30) opts.push(String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'));
   opts.push('23:59');
   if (valor && !opts.includes(valor)) { opts.push(valor); opts.sort(); }
-  return h('select', { style: 'width:100px', onchange: e => aoMudar(e.target.value) }, opts.map(v => h('option', { value: v, selected: v === valor }, v)));
+  // depois da meia-noite: quando o fechamento é de madrugada, a loja fecha no dia seguinte
+  const rotulo = v => (fechamento && Number(v.slice(0, 2)) < 6 ? v + ' (madrugada)' : v);
+  return h('select', { style: 'width:100%;font-size:17px;padding:10px', onchange: e => aoMudar(e.target.value) }, opts.map(v => h('option', { value: v, selected: v === valor }, rotulo(v))));
 }
+
 function horaSelect(id, valor) {
   const opts = [];
   for (let t = 0; t < 1440; t += 30) opts.push(String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'));
@@ -238,16 +241,16 @@ function viewConfig() {
   const boxH = h('div', {});
   const linhaDia = i => {
     const d = horasEst[i];
-    const cab = h('label', { class: 'chk', style: 'margin:0;flex:0 0 120px' },
+    const cab = h('label', { class: 'chk', style: 'margin:0;font-size:18px;font-weight:700' },
       h('input', { type: 'checkbox', checked: d.on, onchange: e => { d.on = e.target.checked; desenhaHoras(); } }), diasNomes[i]);
-    if (!d.on) return h('div', { style: 'margin:10px 0' }, cab, h('span', { class: 'muted' }, ' Fechado'));
-    return h('div', { style: 'margin:10px 0;padding-bottom:8px;border-bottom:1px solid var(--line)' },
+    if (!d.on) return h('div', { style: 'margin:12px 0;padding-bottom:12px;border-bottom:1px solid var(--line)' }, cab, h('span', { class: 'muted' }, ' Fechado'));
+    return h('div', { style: 'margin:12px 0;padding-bottom:12px;border-bottom:1px solid var(--line)' },
       cab,
-      ...d.periods.map((p, j) => h('div', { style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0' },
-        h('span', { style: 'min-width:36px' }, 'Abre'), horaSel(p.open, v => { p.open = v; }),
-        h('span', { style: 'min-width:40px' }, 'Fecha'), horaSel(p.close, v => { p.close = v; }),
-        d.periods.length > 1 ? h('button', { class: 'btn g s', onclick: () => { d.periods.splice(j, 1); desenhaHoras(); } }, 'Remover') : null)),
-      d.periods.length < 4 ? h('button', { class: 'btn g s', onclick: () => { d.periods.push({ open: '18:00', close: '23:00' }); desenhaHoras(); } }, '+ Adicionar outro horário') : null);
+      ...d.periods.map((p, j) => h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;margin:10px 0' },
+        h('div', {}, h('div', { style: 'font-size:15px;font-weight:600;margin-bottom:4px' }, 'Abre'), horaSel(p.open, v => { p.open = v; }, false)),
+        h('div', {}, h('div', { style: 'font-size:15px;font-weight:600;margin-bottom:4px' }, 'Fecha'), horaSel(p.close, v => { p.close = v; }, true)),
+        d.periods.length > 1 ? h('button', { class: 'btn g s', style: 'grid-column:1/-1;justify-self:start', onclick: () => { d.periods.splice(j, 1); desenhaHoras(); } }, 'Remover este horário') : null)),
+      d.periods.length < 4 ? h('button', { class: 'btn g s', style: 'margin-top:4px', onclick: () => { d.periods.push({ open: '18:00', close: '23:00' }); desenhaHoras(); } }, '+ Adicionar outro horário') : null);
   };
   const desenhaHoras = () => boxH.replaceChildren(...horasEst.map((_, i) => linhaDia(i)));
   desenhaHoras();
