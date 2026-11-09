@@ -481,4 +481,26 @@ const server = http.createServer(async (req, res) => {
   }
 });
 setInterval(() => db.exec("DELETE FROM sessions WHERE created_at < datetime('now','-30 days')"), 6 * 3600e3).unref();
+
+// Rede de segurança: consulta no Mercado Pago os Pix ainda não aprovados, caso o aviso (webhook) se perca
+async function conferePixPendentes() {
+  const pend = db.prepare(`SELECT id,store_id,mp_payment_id,mp_status FROM orders
+    WHERE payment_method='pix' AND mp_payment_id IS NOT NULL AND created_at >= datetime('now','-2 hours')
+    AND (mp_status IS NULL OR mp_status NOT IN ('approved','manual','cancelled','rejected','refunded'))
+    ORDER BY id LIMIT 30`).all();
+  for (const o of pend) {
+    try {
+      const dono = db.prepare('SELECT * FROM stores WHERE id=?').get(o.store_id);
+      const tk = dono ? await tokenMP(dono) : null;
+      if (!tk) continue;
+      const pay = await buscarPagamento(tk, o.mp_payment_id);
+      if (pay.status && pay.status !== o.mp_status) {
+        db.prepare('UPDATE orders SET mp_status=? WHERE id=?').run(pay.status, o.id);
+        broadcast(o.store_id, 'order', orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(o.id)));
+      }
+    } catch (e) { console.error('Mercado Pago (conferência):', e.message); }
+  }
+}
+setInterval(() => conferePixPendentes().catch(() => {}), Number(process.env.PIX_CONFERE_MS) || 30e3).unref();
+
 server.listen(PORT, () => console.log(`Pedeaí rodando em http://localhost:${PORT}`));
