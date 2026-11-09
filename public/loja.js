@@ -207,8 +207,9 @@ const PAYLABEL = { pix: 'Pix', dinheiro: 'Dinheiro', cartao_entrega: 'Cartão na
 
 function checkout(keep) {
   const s = data.store, d = $('dlg');
-  const antes = keep && $('f_name') ? { n: $('f_name').value, p: $('f_phone').value, a: $('f_addr').value, o: $('f_notes').value, pay: $('f_pay').value, c: $('f_change').value, cp: $('f_coupon') ? $('f_coupon').value : '' } : null;
+  const antes = keep && $('f_name') ? { n: $('f_name').value, p: $('f_phone').value, end: lerEnd(), o: $('f_notes').value, pay: $('f_pay').value, c: $('f_change').value, cp: $('f_coupon') ? $('f_coupon').value : '' } : null;
   d.dataset.view = 'checkout';
+  const pre = antes ? antes.end : lerEndSalvo();
   if (!keep) { quote = null; kind = 'entrega'; cupom = null; }
   const pays = [['pix', s.payments.pix], ['dinheiro', s.payments.cash], ['cartao_entrega', s.payments.card_delivery], ['link', s.payments.link]].filter(x => x[1]).map(x => x[0]);
   const body = h('div', { class: 'pad' }, h('h3', {}, 'Seu pedido'),
@@ -227,8 +228,15 @@ function checkout(keep) {
       ['entrega', 'retirada'].map(k => h('label', {}, h('input', { type: 'radio', name: 'kind', value: k, checked: k === kind, onchange: () => { kind = k; $('addrBox').hidden = k !== 'entrega'; refreshTotals(); } }), h('span', {}, k === 'entrega' ? 'Entrega' : 'Retirada')))),
     h('label', {}, 'Seu nome'), h('input', { id: 'f_name', autocomplete: 'name', value: antes ? antes.n : ls.get('nm') }),
     h('label', {}, 'Telefone / WhatsApp (com DDD)'), h('input', { id: 'f_phone', type: 'tel', autocomplete: 'tel', value: antes ? antes.p : ls.get('ph') }),
-    h('div', { id: 'addrBox', hidden: kind !== 'entrega' }, h('label', {}, 'Endereço de entrega (rua, número, bairro)'),
-      h('input', { id: 'f_addr', autocomplete: 'street-address', value: antes ? antes.a : ls.get('ad') }),
+    h('div', { id: 'addrBox', hidden: kind !== 'entrega' },
+      h('div', { style: 'display:grid;grid-template-columns:1fr 110px;gap:8px' },
+        h('div', {}, h('label', {}, 'CEP'), h('input', { id: 'f_cep', inputmode: 'numeric', autocomplete: 'postal-code', placeholder: '00000-000', maxlength: 9, value: pre.cep || '',
+          oninput: e => { const d = e.target.value.replace(/\D/g, '').slice(0, 8); e.target.value = d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; } })),
+        h('div', {}, h('label', {}, 'Número'), h('input', { id: 'f_num', inputmode: 'numeric', value: pre.num || '' }))),
+      h('label', {}, 'Rua'), h('input', { id: 'f_rua', autocomplete: 'address-line1', value: pre.rua || '' }),
+      h('label', {}, 'Bairro'), h('input', { id: 'f_bairro', value: pre.bairro || '' }),
+      h('label', {}, 'Cidade - UF'), h('input', { id: 'f_cid', value: pre.cid || '' }),
+      h('label', {}, 'Complemento (opcional)'), h('input', { id: 'f_comp', placeholder: 'Ex: apto 302, bloco B', value: pre.comp || '' }),
       h('p', { id: 'qmsg', style: 'color:var(--mute);font-size:13px;margin-top:6px' })),
     h('label', {}, 'Observações do pedido (opcional)'), h('textarea', { id: 'f_notes', rows: 2, maxlength: 250 }, antes ? antes.o : ''),
     h('label', {}, 'Cupom de desconto (opcional)'),
@@ -247,17 +255,18 @@ function checkout(keep) {
   function totals() {
     const fee = kind === 'entrega' && quote ? quote.fee : 0;
     const desc = cupom ? cupom.discount : 0;
-    $('tot').replaceChildren(h('div', { class: 'row' }, h('span', {}, 'Subtotal'), h('span', {}, brl(subtotal()))),
+    $('tot').replaceChildren(...[h('div', { class: 'row' }, h('span', {}, 'Subtotal'), h('span', {}, brl(subtotal()))),
       desc ? h('div', { class: 'row' }, h('span', {}, 'Desconto (' + cupom.code + ')'), h('span', {}, '-' + brl(desc))) : null,
       fee ? h('div', { class: 'row' }, h('span', {}, 'Entrega'), h('span', {}, brl(fee))) : (kind === 'entrega' ? h('div', { class: 'row' }, h('span', {}, 'Entrega'), h('span', {}, 'a calcular')) : null),
-      h('div', { class: 'row tot' }, h('span', {}, 'Total'), h('span', {}, brl(Math.max(0, subtotal() - desc + fee)))));
+      h('div', { class: 'row tot' }, h('span', {}, 'Total'), h('span', {}, brl(Math.max(0, subtotal() - desc + fee))))].filter(Boolean));
   }
   refreshTotals = totals;
   totals();
   if (quote && $('qmsg')) $('qmsg').textContent = `Distância: ${quote.km} km`;
   if (cupom && $('cmsg')) $('cmsg').textContent = `Cupom ${cupom.code} aplicado.`;
-  $('f_addr').addEventListener('blur', quoteAddr);
-  $('f_addr').addEventListener('input', () => { quote = null; totals(); });
+  ['f_cep', 'f_rua', 'f_num', 'f_comp', 'f_bairro', 'f_cid'].forEach(id => $(id).addEventListener('input', () => { quote = null; totals(); }));
+  $('f_cep').addEventListener('blur', buscaCepCliente);
+  $('f_num').addEventListener('blur', quoteAddr);
   if (!pays.length) { $('err').textContent = 'Esta loja ainda não configurou formas de pagamento.'; $('send').disabled = true; }
   if (!s.is_open) { $('err').textContent = 'A loja está fechada no momento.'; $('send').disabled = true; }
   if (!d.open) d.showModal();
@@ -286,10 +295,38 @@ function lineQty(i, d) {
   checkout(true);
 }
 
+// Endereço do cliente: CEP, rua, número, bairro, cidade e complemento (igual ao cadastro da loja)
+function lerEnd() {
+  const v = id => ($(id) ? $(id).value : '');
+  return { cep: v('f_cep'), rua: v('f_rua'), num: v('f_num'), comp: v('f_comp'), bairro: v('f_bairro'), cid: v('f_cid') };
+}
+function lerEndSalvo() { try { return JSON.parse(ls.get('end') || '{}'); } catch { return {}; } }
+function fullAddr() {
+  const e = lerEnd(), cep = e.cep.replace(/\D/g, '');
+  if (!e.rua.trim() || !e.num.trim() || !e.bairro.trim() || cep.length !== 8) return '';
+  const linha = e.rua.trim() + ', ' + e.num.trim() + (e.comp.trim() ? ' (' + e.comp.trim() + ')' : '');
+  return [linha, e.bairro.trim(), e.cid.trim(), 'CEP ' + cep.slice(0, 5) + '-' + cep.slice(5)].filter(Boolean).join(' - ');
+}
+async function buscaCepCliente() {
+  const cep = lerEnd().cep.replace(/\D/g, '');
+  if (cep.length !== 8) return;
+  try {
+    const r = await fetch('https://viacep.com.br/ws/' + cep + '/json/');
+    const j = await r.json();
+    if (j.erro) { $('err').textContent = 'CEP não encontrado. Confira os números.'; return; }
+    $('f_rua').value = j.logradouro || $('f_rua').value;
+    $('f_bairro').value = j.bairro || $('f_bairro').value;
+    $('f_cid').value = [j.localidade, j.uf].filter(Boolean).join(' - ');
+    $('err').textContent = '';
+    quote = null; refreshTotals();
+    $('f_num').focus();
+  } catch { $('err').textContent = 'Não consegui consultar o CEP. Preencha os campos à mão.'; }
+}
+
 async function quoteAddr() {
-  const a = $('f_addr').value.trim();
+  const a = fullAddr();
   $('err').textContent = ''; $('qmsg').textContent = ''; quote = null;
-  if (a.length < 6) { $('err').textContent = 'Digite o endereço completo (rua, número, bairro e cidade).'; refreshTotals(); return; }
+  if (!a) { if (kind === 'entrega') $('err').textContent = 'Preencha CEP, rua, número e bairro.'; refreshTotals(); return; }
   $('qmsg').textContent = 'Calculando a taxa...';
   try {
     const r = await fetch(`/api/public/${slug}/quote?address=${encodeURIComponent(a)}`);
@@ -305,7 +342,7 @@ async function send() {
   if (kind === 'entrega' && !quote) { await quoteAddr(); if (!quote) return; }
   const btn = $('send'); btn.disabled = true; $('err').textContent = '';
   const body = {
-    kind, customer_name: $('f_name').value, phone: $('f_phone').value, address: $('f_addr').value, notes: $('f_notes').value, coupon: $('f_coupon') ? $('f_coupon').value.trim() : '',
+    kind, customer_name: $('f_name').value, phone: $('f_phone').value, address: fullAddr(), notes: $('f_notes').value, coupon: $('f_coupon') ? $('f_coupon').value.trim() : '',
     payment_method: $('f_pay').value, change_for: $('f_change').value,
     items: lines.map(l => ({ id: l.id, qty: l.qty, obs: l.obs, choices: Object.entries(l.picks).map(([group, picks]) => ({ group, picks })) })),
   };
@@ -313,7 +350,7 @@ async function send() {
     const r = await fetch(`/api/public/${slug}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json();
     if (!r.ok) { $('err').textContent = j.error || 'Erro ao enviar.'; btn.disabled = false; return; }
-    ls.set('nm', body.customer_name); ls.set('ph', body.phone); ls.set('ad', body.address);
+    ls.set('nm', body.customer_name); ls.set('ph', body.phone); ls.set('ad', body.address); ls.set('end', JSON.stringify(lerEnd()));
     salvaPedido(j, body.phone);
     lines = []; renderMenu(); done(j, body.payment_method);
   } catch { $('err').textContent = 'Sem conexão. Tente novamente.'; btn.disabled = false; }

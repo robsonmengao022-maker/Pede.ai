@@ -202,7 +202,7 @@ function couponDiscount(storeId, rawCode, subtotal) {
   return { id: c.id, code: c.code, discount: Math.round(Math.min(raw, subtotal) * 100) / 100 };
 }
 
-for (const col of ['uf TEXT DEFAULT \'\'', 'bairro TEXT DEFAULT \'\'', 'numero TEXT DEFAULT \'\'', 'cep TEXT DEFAULT \'\'']) { try { db.exec('ALTER TABLE stores ADD COLUMN ' + col); } catch {} }
+for (const col of ['uf TEXT DEFAULT \'\'', 'bairro TEXT DEFAULT \'\'', 'numero TEXT DEFAULT \'\'', 'cep TEXT DEFAULT \'\'', 'logo_url TEXT DEFAULT \'\'', 'capa_url TEXT DEFAULT \'\'', 'print_media INTEGER DEFAULT 1']) { try { db.exec('ALTER TABLE stores ADD COLUMN ' + col); } catch {} }
 
 const orderOut = o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined });
 

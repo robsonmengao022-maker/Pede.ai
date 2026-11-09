@@ -97,22 +97,32 @@ function viewOrders() {
     active.length ? active.map(orderCard) : h('p', { class: 'muted' }, 'Nenhum pedido em andamento. Seu link: ' + location.origin + '/' + me.slug),
     hist.length ? [h('h2', { style: 'font-size:17px' }, 'Finalizados (últimos 2 dias)'), hist.slice(0, 40).map(orderCard)] : null);
 }
+const pixPago = o => o.payment_method !== 'pix' || ['approved', 'manual'].includes(o.mp_status);
+const pixPendente = o => !pixPago(o) && o.status !== 'cancelado';
+async function confirmaPix(o) {
+  if (!confirm('Confirme só se o Pix já caiu na sua conta. Confirmar?')) return;
+  try { await api(`/orders/${o.id}/pix-confirmar`, 'POST'); o.mp_status = 'manual'; viewOrders(); } catch (e) { alert(e.message); }
+}
 function orderCard(o) {
+  const pend = pixPendente(o);
   const nx = NEXT[o.status];
   return h('div', { class: 'card order ' + o.status },
-    h('h3', {}, h('span', {}, '#' + o.code + ' · ' + o.customer_name), h('span', { class: 'tag' }, SLABEL[o.status])),
+    h('h3', {}, h('span', {}, '#' + o.code + ' · ' + o.customer_name), h('span', { class: 'tag' }, pend ? 'AGUARDANDO PIX' : SLABEL[o.status])),
     h('div', { class: 'muted' }, new Date(o.created_at.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) + ' · ' + (o.kind === 'entrega' ? 'Entrega' : 'Retirada') + ' · ' + o.phone),
     o.kind === 'entrega' ? h('div', {}, '📍 ' + o.address) : null,
     h('ul', {}, o.items.map(i => h('li', {}, i.qty + 'x ' + i.name + ' — ' + brl(i.qty * i.price), i.obs ? h('div', { class: 'muted' }, 'Obs: ' + i.obs) : null, i.choices ? h('div', { class: 'muted' }, i.choices) : null))),
     o.notes ? h('div', { class: 'muted' }, 'Obs do pedido: ' + o.notes) : null,
     h('div', {}, h('b', {}, 'Total ' + brl(o.total)), ' · ' + PAY[o.payment_method] + (o.change_for ? ' (troco p/ ' + o.change_for + ')' : '')),
     h('div', { class: 'acts' },
-      nx ? h('button', { class: 'btn s', onclick: () => setStatus(o, nx[0]) }, nx[1]) : null,
-      h('button', { class: 'btn g s', onclick: () => printOrder(o.id) }, '🖨 Imprimir'),
+      pend ? h('button', { class: 'btn s', onclick: () => confirmaPix(o) }, 'Pix recebido: confirmar') : null,
+      nx && !pend ? h('button', { class: 'btn s', onclick: () => setStatus(o, nx[0]) }, nx[1]) : null,
+      pend ? null : h('button', { class: 'btn g s', onclick: () => printOrder(o.id) }, '🖨 Imprimir'),
       h('a', { class: 'btn g s', style: 'text-decoration:none', target: '_blank', rel: 'noopener noreferrer', href: 'https://wa.me/55' + o.phone.replace(/\D/g, '').replace(/^55/, '') }, 'WhatsApp'),
       ['novo', 'preparando'].includes(o.status) ? h('button', { class: 'btn r s', onclick: () => confirm('Cancelar este pedido?') && setStatus(o, 'cancelado') }, 'Cancelar') : null));
 }
-async function setStatus(o, s) { await api(`/orders/${o.id}/status`, 'PUT', { status: s }); o.status = s; viewOrders(); }
+async function setStatus(o, s) {
+  try { await api(`/orders/${o.id}/status`, 'PUT', { status: s }); o.status = s; viewOrders(); } catch (e) { alert(e.message); }
+}
 function printOrder(id) {
   const f = h('iframe', { src: '/recibo/' + id, style: 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none' });
   document.body.append(f); setTimeout(() => f.remove(), 60000);
@@ -130,9 +140,12 @@ function connect() {
   es = new EventSource('/api/events');
   es.addEventListener('order', e => {
     const o = JSON.parse(e.data);
-    if (!orders.some(x => x.id === o.id)) orders.unshift(o);
-    if (ls.get('snd', '1') === '1') beep();
-    if (ls.get('aprint', '0') === '1') printOrder(o.id);
+    const antigo = orders.find(x => x.id === o.id);
+    const jaPago = antigo ? pixPago(antigo) : false;
+    if (antigo) Object.assign(antigo, o); else orders.unshift(o);
+    if (!antigo && ls.get('snd', '1') === '1') beep();
+    // imprime quando o pedido nasce pago, ou quando um Pix pendente é confirmado
+    if (ls.get('aprint', '0') === '1' && pixPago(o) && !jaPago) printOrder(o.id);
     document.title = '🔔 Novo pedido! — Pedeaí';
     if (tab === 'pedidos') viewOrders();
   });

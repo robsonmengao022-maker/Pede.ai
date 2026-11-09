@@ -183,6 +183,24 @@ async function buscaCep(cep) {
   } catch { if (msg) msg.textContent = 'Não consegui buscar o CEP. Preencha manualmente.'; }
 }
 
+function comandaFoto(campo, st) {
+  return e => {
+    const f = e.target.files[0]; if (!f) return;
+    $(st).textContent = 'Enviando...';
+    (async () => {
+      try { const r = await api('/upload', 'POST', { data: await comprimirFoto(f) }); $(campo).value = r.url; $(st).textContent = 'Enviada. Clique em Salvar configurações.'; }
+      catch (err) { $(st).textContent = err.message || 'Não consegui enviar.'; }
+    })();
+  };
+}
+function campoImagem(campo, rotulo, atual) {
+  return h('div', {}, h('label', {}, rotulo),
+    h('input', { type: 'hidden', id: campo, value: atual || '' }),
+    h('div', { id: campo + '_st', class: 'muted', style: 'margin:4px 0' }, atual ? 'Imagem enviada.' : 'Nenhuma imagem.'),
+    h('div', { class: 'row' },
+      h('label', { class: 'btn g s', style: 'cursor:pointer' }, 'Escolher imagem', h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: comandaFoto(campo, campo + '_st') })),
+      h('button', { class: 'btn g s', onclick: () => { $(campo).value = ''; $(campo + '_st').textContent = 'Será removida ao salvar.'; } }, 'Remover')));
+}
 function viewConfig() {
   const v = $('view'), s = me;
   const hours = (() => { try { const x = JSON.parse(s.hours || 'null'); return Array.isArray(x) ? x : []; } catch { return []; } })();
@@ -221,11 +239,15 @@ function viewConfig() {
     h('h3', { style: 'margin:18px 0 0' }, 'Taxa de entrega por km'),
     h('p', { class: 'muted', style: 'margin:4px 0' }, 'Distância em linha reta, do endereço da loja ao do cliente. Deixe em branco os km em que você não entrega. Salve o endereço da loja acima para o cálculo funcionar.'),
     h('div', { class: 'grid' }, Array.from({ length: 15 }, (_, i) => h('div', {}, h('label', {}, (i + 1) + ' km'), h('input', { id: 's_km' + (i + 1), inputmode: 'decimal', value: kmFees[i] == null ? '' : String(kmFees[i]).replace('.', ','), placeholder: 'R$' })))),
+    h('h3', { style: 'margin:18px 0 0' }, 'Comanda impressa'),
+    h('p', { class: 'muted', style: 'margin:4px 0' }, 'A logo aparece no topo da comanda. A capa é a imagem larga que fica acima da logo. Use JPG, PNG ou WebP até 1 MB.'),
+    h('div', { class: 'grid' }, campoImagem('s_logo', 'Logo da loja', s.logo_url), campoImagem('s_capa', 'Capa da comanda', s.capa_url)),
+    chk('s_media', 'Imprimir logo e capa na comanda', s.print_media !== 0),
     h('div', { class: 'msg', id: 's_msg' }),
     h('button', { class: 'btn', onclick: async () => {
       const g = id => $(id).value, c = id => $(id).checked;
       try {
-        const saved = await api('/me', 'PUT', { name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), numero: g('s_num'), bairro: g('s_bairro'), uf: g('s_uf'), cep: g('s_cep'), city: g('s_city'), min_order: g('s_min'), is_open: c('s_open'),
+        const saved = await api('/me', 'PUT', { logo_url: g('s_logo'), capa_url: g('s_capa'), print_media: c('s_media'), name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), numero: g('s_num'), bairro: g('s_bairro'), uf: g('s_uf'), cep: g('s_cep'), city: g('s_city'), min_order: g('s_min'), is_open: c('s_open'),
           accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), prep_time: g('s_prep'), store_notice: g('s_notice'), hours: Array.from({ length: 7 }, (_, i) => ({ on: c('h_on' + i), open: g('h_o' + i), close: g('h_c' + i) })), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
         me = await api('/me'); $('s_msg').className = saved.warning ? 'msg err' : 'msg ok'; $('s_msg').textContent = saved.warning || 'Salvo!';
       } catch (e) { $('s_msg').className = 'msg err'; $('s_msg').textContent = e.message; }

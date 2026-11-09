@@ -8,6 +8,10 @@ const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, month
 const { receipt } = require('./receipt');
 const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
 const { DATA_DIR, couponDiscount } = require('./lib');
+// Pix só conta como pago depois de confirmado (Mercado Pago ou confirmação manual do lojista)
+const pixPago = o => o.payment_method !== 'pix' || ['approved', 'manual'].includes(o.mp_status);
+// Logo e capa só podem apontar para arquivos já enviados pelo painel
+const upl = v => /^\/uploads\/[a-f0-9]+\.(jpg|png|webp)$/.test(String(v || '')) ? String(v) : '';
 const { mpReady, criarPix, buscarPagamento } = require('./mp');
 const { sendMail, mailReady } = require('./mail');
 
@@ -276,6 +280,7 @@ async function api(req, res, url) {
       accepts_pix: b.accepts_pix ? 1 : 0, accepts_cash: b.accepts_cash ? 1 : 0, accepts_card_delivery: b.accepts_card_delivery ? 1 : 0,
       accepts_link: b.accepts_link ? 1 : 0, payment_link: okUrl(str(b.payment_link, 500)),
       delivery_fee: Math.max(0, num(b.delivery_fee) || 0), min_order: Math.max(0, num(b.min_order) || 0), is_open: b.is_open ? 1 : 0,
+      logo_url: upl(b.logo_url), capa_url: upl(b.capa_url), print_media: b.print_media ? 1 : 0,
     };
     let warning = '';
     if ((f.address || f.city) && (f.address !== store.address || f.city !== store.city || store.lat == null)) {
@@ -344,9 +349,21 @@ async function api(req, res, url) {
     const rows = db.prepare(`SELECT * FROM orders WHERE store_id=? AND created_at>=datetime('now','-2 days') ORDER BY id DESC LIMIT 300`).all(store.id);
     return json(res, 200, rows.map(orderOut));
   }
+  if ((g = p.match(/^\/api\/orders\/(\d+)\/pix-confirmar$/)) && m === 'POST') {
+    const o = db.prepare('SELECT * FROM orders WHERE id=? AND store_id=?').get(g[1], store.id);
+    if (!o) return fail(res, 404, 'Pedido não encontrado');
+    if (o.payment_method !== 'pix') return fail(res, 400, 'Este pedido não é Pix.');
+    if (!pixPago(o)) db.prepare("UPDATE orders SET mp_status='manual' WHERE id=?").run(o.id);
+    const atual = orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(o.id));
+    broadcast(store.id, 'order', atual);
+    return json(res, 200, atual);
+  }
   if ((g = p.match(/^\/api\/orders\/(\d+)\/status$/)) && m === 'PUT') {
     const st = str((await readBody(req)).status, 20);
     if (!STATUSES.includes(st)) return fail(res, 400, 'Status inválido.');
+    const ord = db.prepare('SELECT payment_method,mp_status FROM orders WHERE id=? AND store_id=?').get(g[1], store.id);
+    if (!ord) return fail(res, 404, 'Pedido não encontrado');
+    if (st !== 'cancelado' && !pixPago(ord)) return fail(res, 400, 'Pix ainda não confirmado. Aceite o pedido só depois que o pagamento cair.');
     db.prepare('UPDATE orders SET status=? WHERE id=? AND store_id=?').run(st, g[1], store.id);
     return json(res, 200, { ok: true });
   }
@@ -411,6 +428,7 @@ const server = http.createServer(async (req, res) => {
     if ((g = p.match(/^\/recibo\/(\d+)$/))) {
       const s = authStore(req); if (!s) return send(res, 401, 'Faça login', HTML);
       const o = db.prepare('SELECT * FROM orders WHERE id=? AND store_id=?').get(g[1], s.id);
+      if (o && !pixPago(o)) return send(res, 403, 'Pix ainda não confirmado. A comanda só sai depois do pagamento.', HTML);
       return o ? send(res, 200, receipt(s, o), HTML) : send(res, 404, 'Pedido não encontrado', HTML);
     }
     if ((g = p.match(/^\/([a-z0-9-]{2,40})\/?$/)) && !RESERVED.has(g[1]) && db.prepare('SELECT 1 FROM stores WHERE slug=?').get(g[1]))
