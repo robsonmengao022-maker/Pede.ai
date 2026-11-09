@@ -28,9 +28,9 @@ async function viewMenu() {
       h('small', { class: 'muted' }, g.max === 1 ? 'O cliente escolhe uma opção (ex.: combo).' : 'O cliente pode marcar até ' + g.max + ' opções.'),
       h('label', {}, 'Opções'),
       g.items.map((it, ii) => h('div', { style: 'border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px' },
-        h('input', { value: it.name, placeholder: 'Nome (ex.: Bacon)', oninput: e => { it.name = e.target.value; } }),
+        h('div', {}, h('label', {}, 'Nome da opção'), h('input', { value: it.name, placeholder: 'Ex.: Bacon', oninput: e => { it.name = e.target.value; } })),
         h('div', { class: 'row', style: 'flex-wrap:nowrap;gap:6px' },
-          h('input', { value: it.price ? String(it.price).replace('.', ',') : '', placeholder: 'Preço extra (0 = grátis)', inputmode: 'decimal', style: 'flex:1;min-width:0', oninput: e => { it.price = Number(String(e.target.value).replace(',', '.')) || 0; } }),
+          h('div', { style: 'flex:1;min-width:0' }, h('label', {}, 'Preço extra (R$)'), h('input', { value: it.price ? String(it.price).replace('.', ',') : '', placeholder: '0 = grátis', inputmode: 'decimal', oninput: e => { it.price = Number(String(e.target.value).replace(',', '.')) || 0; } })),
           h('button', { class: 'btn r s', onclick: () => { draft = lerDraft(); g.items.splice(ii, 1); drawForm(true); } }, 'Excluir')))),
       h('button', { class: 'btn g s', onclick: () => { draft = lerDraft(); g.items.push({ name: '', price: 0 }); drawForm(true); } }, '+ Adicionar opção'))));
   }
