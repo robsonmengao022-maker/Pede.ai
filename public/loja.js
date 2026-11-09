@@ -273,7 +273,7 @@ function done(j, method) {
     h('p', { id: 'paidMsg', style: 'color:#15803d;font-weight:700' }),
     method === 'pix' ? h('div', {}, h('b', {}, 'Pague com Pix (copia e cola):'), h('div', { class: 'pix' }, j.pix),
       h('button', { class: 'btn', onclick: e => { navigator.clipboard?.writeText(j.pix).catch(() => {}); e.target.textContent = 'Copiado!'; } }, 'Copiar código Pix'),
-      h('p', { style: 'color:var(--mute);font-size:13px' }, 'O pagamento vai direto para a conta da loja. Depois de pagar, é só aguardar.')) : null,
+      h('p', { style: 'color:var(--mute);font-size:13px' }, 'Pague no app do seu banco. Depois de pagar, acompanhe o status do pedido por aqui.')) : null,
     method === 'link' ? h('div', {}, h('p', {}, 'Pague com cartão no link da loja. Informe o valor de ' + brl(j.total) + ' e o código #' + j.code + '.'),
       h('a', { class: 'btn', style: 'display:block;text-align:center;text-decoration:none', href: j.payment_link, target: '_blank', rel: 'noopener noreferrer' }, 'Abrir link de pagamento')) : null,
     method === 'dinheiro' ? h('p', {}, 'Pagamento em dinheiro na entrega ou retirada.') : null,
