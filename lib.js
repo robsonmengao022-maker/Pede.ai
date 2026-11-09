@@ -126,9 +126,17 @@ function parseGroups(raw) {
 
 // Horário: lista de 7 dias (0 = domingo). Sem horário cadastrado, vale só o botão de abrir/fechar.
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+// Cada dia: { on, periods: [{open, close}] }. Aceita o formato antigo (open/close únicos).
+function normDia(d) {
+  const brutos = Array.isArray(d && d.periods) ? d.periods : (d && (d.open || d.close) ? [{ open: d.open, close: d.close }] : []);
+  let periods = brutos.filter(p => p && HHMM.test(p.open) && HHMM.test(p.close)).slice(0, 4).map(p => ({ open: p.open, close: p.close }));
+  const on = !!(d && d.on);
+  if (on && !periods.length) periods = [{ open: '08:00', close: '22:00' }];
+  return { on, periods };
+}
 function cleanHours(raw) {
   if (!Array.isArray(raw) || raw.length !== 7) return '';
-  return JSON.stringify(raw.map(d => ({ on: !!(d && d.on), open: HHMM.test(d && d.open) ? d.open : '08:00', close: HHMM.test(d && d.close) ? d.close : '22:00' })));
+  return JSON.stringify(raw.map(normDia));
 }
 function isOpenNow(s) {
   if (!s.is_open) return false;
@@ -137,10 +145,12 @@ function isOpenNow(s) {
   const br = new Date(Date.now() - 3 * 3600e3); // horário de Brasília
   const day = br.getUTCDay(), now = br.getUTCHours() * 60 + br.getUTCMinutes();
   const toM = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-  const hoje = hours[day];
-  if (hoje && hoje.on) { const o = toM(hoje.open), c = toM(hoje.close); if (c > o ? (now >= o && now < c) : (now >= o)) return true; }
-  const ontem = hours[(day + 6) % 7];
-  if (ontem && ontem.on) { const o = toM(ontem.open), c = toM(ontem.close); if (c < o && now < c) return true; }
+  // períodos do dia (formato novo: periods; formato antigo: open/close)
+  const periodos = d => (d && d.on ? (Array.isArray(d.periods) ? d.periods : [{ open: d.open, close: d.close }]) : []);
+  // hoje: aberto se o horário atual cai num período de hoje (um período pode passar da meia-noite)
+  for (const p of periodos(hours[day])) { const o = toM(p.open), c = toM(p.close); if (c > o ? (now >= o && now < c) : (now >= o)) return true; }
+  // madrugada: período de ontem que virou a meia-noite ainda está aberto
+  for (const p of periodos(hours[(day + 6) % 7])) { const o = toM(p.open), c = toM(p.close); if (c < o && now < c) return true; }
   return false;
 }
 const publicStore = s => ({

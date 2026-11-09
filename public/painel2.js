@@ -160,6 +160,14 @@ function cuponsCard() {
 
 // ---------- Configurações ----------
 // Lista de horários de 30 em 30 minutos (mais simples no celular que o relógio)
+// Horário em lista (de 30 em 30 min, mais 23:59), para o lojista escolher sem digitar
+function horaSel(valor, aoMudar) {
+  const opts = [];
+  for (let t = 0; t < 1440; t += 30) opts.push(String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'));
+  opts.push('23:59');
+  if (valor && !opts.includes(valor)) { opts.push(valor); opts.sort(); }
+  return h('select', { style: 'width:100px', onchange: e => aoMudar(e.target.value) }, opts.map(v => h('option', { value: v, selected: v === valor }, v)));
+}
 function horaSelect(id, valor) {
   const opts = [];
   for (let t = 0; t < 1440; t += 30) opts.push(String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'));
@@ -219,6 +227,30 @@ function viewConfig() {
   const hours = (() => { try { const x = JSON.parse(s.hours || 'null'); return Array.isArray(x) ? x : []; } catch { return []; } })();
   const kmFees = (() => { try { const x = typeof s.km_fees === 'string' ? JSON.parse(s.km_fees || 'null') : s.km_fees; return Array.isArray(x) ? x : []; } catch { return []; } })();
   const chk = (id, label, val) => h('label', { class: 'chk' }, h('input', { type: 'checkbox', id, checked: !!val }), label);
+  // horários: cada dia tem uma lista de períodos (abre / fecha), e fechar depois da meia-noite é permitido
+  const diasNomes = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  const horasEst = Array.from({ length: 7 }, (_, i) => {
+    const d = hours[i] || {};
+    let per = Array.isArray(d.periods) ? d.periods.map(p => ({ open: p.open, close: p.close })) : (d.open || d.close ? [{ open: d.open || '08:00', close: d.close || '22:00' }] : []);
+    if (!per.length) per = [{ open: '08:00', close: '22:00' }];
+    return { on: !!d.on, periods: per };
+  });
+  const boxH = h('div', {});
+  const linhaDia = i => {
+    const d = horasEst[i];
+    const cab = h('label', { class: 'chk', style: 'margin:0;flex:0 0 120px' },
+      h('input', { type: 'checkbox', checked: d.on, onchange: e => { d.on = e.target.checked; desenhaHoras(); } }), diasNomes[i]);
+    if (!d.on) return h('div', { style: 'margin:10px 0' }, cab, h('span', { class: 'muted' }, ' Fechado'));
+    return h('div', { style: 'margin:10px 0;padding-bottom:8px;border-bottom:1px solid var(--line)' },
+      cab,
+      ...d.periods.map((p, j) => h('div', { style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0' },
+        h('span', { style: 'min-width:36px' }, 'Abre'), horaSel(p.open, v => { p.open = v; }),
+        h('span', { style: 'min-width:40px' }, 'Fecha'), horaSel(p.close, v => { p.close = v; }),
+        d.periods.length > 1 ? h('button', { class: 'btn g s', onclick: () => { d.periods.splice(j, 1); desenhaHoras(); } }, 'Remover') : null)),
+      d.periods.length < 4 ? h('button', { class: 'btn g s', onclick: () => { d.periods.push({ open: '18:00', close: '23:00' }); desenhaHoras(); } }, '+ Adicionar outro horário') : null);
+  };
+  const desenhaHoras = () => boxH.replaceChildren(...horasEst.map((_, i) => linhaDia(i)));
+  desenhaHoras();
   put(v, h('div', { class: 'card' },
     h('div', { class: 'grid' },
       h('div', {}, h('label', {}, 'Nome da loja'), h('input', { id: 's_name', value: s.name })),
@@ -242,10 +274,8 @@ function viewConfig() {
     h('label', {}, 'Seu link de pagamento'), h('input', { id: 's_linkurl', value: s.payment_link, placeholder: 'https://...' }),
     h('h3', { style: 'margin:18px 0 0' }, 'Horário de funcionamento'),
     h('p', { class: 'muted', style: 'margin:4px 0' }, 'Sem horário, a loja fica aberta enquanto o botão "Loja aberta" estiver marcado. Com horário, ela abre e fecha sozinha.'),
-    ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((dia, i) => h('div', { class: 'row', style: 'margin:8px 0;flex-wrap:wrap;gap:8px' },
-      h('label', { class: 'chk', style: 'margin:0;flex:0 0 100px' }, h('input', { type: 'checkbox', id: 'h_on' + i, checked: !!(hours[i] && hours[i].on) }), dia),
-      horaSelect('h_o' + i, (hours[i] && hours[i].open) || '08:00'),
-      horaSelect('h_c' + i, (hours[i] && hours[i].close) || '22:00'))),
+    h('p', { class: 'muted', style: 'margin:4px 0' }, 'Se a loja fecha depois da meia-noite, escolha o horário da madrugada (ex.: 02:00). Para mais de um turno no mesmo dia, use "Adicionar outro horário".'),
+    boxH,
     h('div', { class: 'grid', style: 'margin-top:10px' },
       h('div', {}, h('label', {}, 'Tempo de preparo (ex.: 30-40 min)'), h('input', { id: 's_prep', value: s.prep_time || '' })),
       h('div', {}, h('label', {}, 'Aviso para o cliente (opcional)'), h('input', { id: 's_notice', value: s.store_notice || '', placeholder: 'Ex.: Estamos com fila, pedidos podem demorar' }))),
@@ -263,7 +293,7 @@ function viewConfig() {
       const g = id => $(id).value, c = id => $(id).checked;
       try {
         const saved = await api('/me', 'PUT', { logo_url: g('s_logo'), capa_url: g('s_capa'), print_media: c('s_media'), name: g('s_name'), whatsapp: g('s_wa'), address: g('s_addr'), numero: g('s_num'), bairro: g('s_bairro'), uf: g('s_uf'), cep: g('s_cep'), city: g('s_city'), min_order: g('s_min'), is_open: c('s_open'),
-          accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), prep_time: g('s_prep'), store_notice: g('s_notice'), hours: Array.from({ length: 7 }, (_, i) => ({ on: c('h_on' + i), open: g('h_o' + i), close: g('h_c' + i) })), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
+          accepts_pix: c('s_pix'), pix_key: g('s_pixkey'), pix_name: g('s_pixname'), accepts_cash: c('s_cash'), accepts_card_delivery: c('s_card'), accepts_link: c('s_link'), payment_link: g('s_linkurl'), prep_time: g('s_prep'), store_notice: g('s_notice'), hours: horasEst.map(d => ({ on: d.on, periods: d.periods })), km_fees: Array.from({ length: 15 }, (_, i) => g('s_km' + (i + 1))) });
         me = await api('/me'); $('s_msg').className = saved.warning ? 'msg err' : 'msg ok'; $('s_msg').textContent = saved.warning || 'Salvo!';
       } catch (e) { $('s_msg').className = 'msg err'; $('s_msg').textContent = e.message; }
     } }, 'Salvar configurações')));
