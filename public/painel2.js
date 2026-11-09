@@ -149,6 +149,22 @@ function cuponsCard() {
 }
 
 // ---------- Configurações ----------
+// Busca rua, bairro, cidade e UF pelo CEP (ViaCEP)
+async function buscaCep(cep) {
+  const msg = $('s_cepmsg'); if (msg) msg.textContent = 'Buscando endereço...';
+  try {
+    const r = await fetch('https://viacep.com.br/ws/' + cep + '/json/');
+    const j = await r.json();
+    if (j.erro) { if (msg) msg.textContent = 'CEP não encontrado. Digite a rua e a cidade manualmente.'; return; }
+    if ($('s_addr')) $('s_addr').value = j.logradouro || '';
+    if ($('s_bairro')) $('s_bairro').value = j.bairro || '';
+    if ($('s_city')) $('s_city').value = j.localidade || '';
+    if ($('s_uf')) $('s_uf').value = j.uf || '';
+    if (msg) msg.textContent = 'Endereço encontrado. Confira e digite o número.';
+    if ($('s_num')) $('s_num').focus();
+  } catch { if (msg) msg.textContent = 'Não consegui buscar o CEP. Preencha manualmente.'; }
+}
+
 function viewConfig() {
   const v = $('view'), s = me;
   const hours = (() => { try { const x = JSON.parse(s.hours || 'null'); return Array.isArray(x) ? x : []; } catch { return []; } })();
@@ -158,7 +174,7 @@ function viewConfig() {
     h('div', { class: 'grid' },
       h('div', {}, h('label', {}, 'Nome da loja'), h('input', { id: 's_name', value: s.name })),
       h('div', {}, h('label', {}, 'WhatsApp'), h('input', { id: 's_wa', value: s.whatsapp })),
-      h('div', {}, h('label', {}, 'CEP'), h('input', { id: 's_cep', value: s.cep || '', inputmode: 'numeric', placeholder: '00000-000' })),
+      h('div', {}, h('label', {}, 'CEP (preenche o resto sozinho)'), h('input', { id: 's_cep', value: s.cep || '', inputmode: 'numeric', placeholder: '00000-000', oninput: e => { const d = e.target.value.replace(/\D/g, '').slice(0, 8); e.target.value = d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; if (d.length === 8) buscaCep(d); } }), h('small', { id: 's_cepmsg', class: 'muted' })),
       h('div', {}, h('label', {}, 'Rua / Avenida'), h('input', { id: 's_addr', value: s.address || '' })),
       h('div', {}, h('label', {}, 'Número'), h('input', { id: 's_num', value: s.numero || '' })),
       h('div', {}, h('label', {}, 'Bairro'), h('input', { id: 's_bairro', value: s.bairro || '' })),
