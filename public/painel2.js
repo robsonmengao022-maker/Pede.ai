@@ -112,6 +112,12 @@ async function viewMenu() {
   v.append(cuponsCard());
 }
 
+// Converte dd/mm/aaaa em aaaa-mm-dd (vazio se inválido ou em branco)
+function dataIso(v) {
+  const m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
+
 // Cupons de desconto (lista + criação)
 function cuponsCard() {
   const lista = h('div', {}), msg = h('div', { class: 'err' });
@@ -120,7 +126,10 @@ function cuponsCard() {
   const valor = h('input', { type: 'number', step: '0.01', placeholder: 'Valor (ex: 10)' });
   const minimo = h('input', { type: 'number', step: '0.01', placeholder: 'Pedido mínimo em R$ (opcional)' });
   const usos = h('input', { type: 'number', placeholder: 'Limite de usos (0 = sem limite)' });
-  const validade = h('input', { type: 'date' });
+  const validade = h('input', { placeholder: 'Válido até (dd/mm/aaaa, opcional)', inputmode: 'numeric', maxlength: 10, oninput: e => {
+    const d = e.target.value.replace(/\D/g, '').slice(0, 8);
+    e.target.value = d.length > 4 ? d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4) : d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+  } });
   async function carrega() {
     try {
       const cs = await api('/coupons');
@@ -141,7 +150,7 @@ function cuponsCard() {
     h('button', { class: 'btn', style: 'margin-top:8px', onclick: async () => {
       msg.textContent = '';
       try {
-        await api('/coupons', 'POST', { code: cod.value, kind: tipo.value, value: valor.value, min_order: minimo.value, max_uses: usos.value, expires_at: validade.value });
+        await api('/coupons', 'POST', { code: cod.value, kind: tipo.value, value: valor.value, min_order: minimo.value, max_uses: usos.value, expires_at: dataIso(validade.value) });
         cod.value = ''; valor.value = ''; minimo.value = ''; usos.value = ''; validade.value = '';
         carrega();
       } catch (e) { msg.textContent = e.message; }
