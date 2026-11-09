@@ -23,7 +23,8 @@ let lines = [];          // itens do carrinho: {id, qty, obs, picks: {grupo: [op
 let quote = null;        // taxa de entrega calculada pelo endereço
 let kind = 'entrega';
 let refreshTotals = () => {};
-let cupom = null;        // {code, discount} validado pelo servidor
+let cupom = null;
+let vistaAtual = 'cardapio';        // {code, discount} validado pelo servidor
 
 async function load() {
   const r = await fetch('/api/public/' + slug);
@@ -40,6 +41,7 @@ async function load() {
     s.delivery_fee ? h('p', {}, 'Pedido mínimo: ' + brl(s.min_order)) : (s.min_order ? h('p', {}, 'Pedido mínimo: ' + brl(s.min_order)) : null)
   ].filter(Boolean));
   renderMenu();
+  avaliaAoVoltar();
 }
 
 function renderMenu() {
@@ -48,7 +50,8 @@ function renderMenu() {
   if (rest.length) groups.push({ id: 0, name: groups.length ? 'Outros' : 'Cardápio', items: rest });
   const gs = groups.filter(g => g.items.length);
   $('cats').replaceChildren(...gs.map(g => h('a', { href: '#c' + g.id }, g.name)));
-  $('cats').hidden = gs.length < 2;
+  $('cats').dataset.multi = gs.length >= 2 ? '1' : '';
+  $('cats').hidden = gs.length < 2 || vistaAtual !== 'cardapio';
   $('menu').replaceChildren(...(gs.length ? gs.map(g => h('section', { id: 'c' + g.id }, h('h2', {}, g.name), g.items.map(card)))
     : [h('p', { class: 'foot' }, 'Esta loja ainda não cadastrou produtos.')]));
   updateBar();
@@ -89,7 +92,7 @@ const totalQtd = () => lines.reduce((a, l) => a + l.qty, 0);
 
 function updateBar() {
   const n = totalQtd();
-  $('bar').hidden = !n;
+  $('bar').hidden = !n || vistaAtual !== 'cardapio';
   $('cartN').textContent = `Ver carrinho (${n})`; $('cartT').textContent = brl(subtotal());
 }
 $('cartBtn').onclick = () => checkout();
@@ -311,6 +314,7 @@ async function send() {
     const j = await r.json();
     if (!r.ok) { $('err').textContent = j.error || 'Erro ao enviar.'; btn.disabled = false; return; }
     ls.set('nm', body.customer_name); ls.set('ph', body.phone); ls.set('ad', body.address);
+    salvaPedido(j, body.phone);
     lines = []; renderMenu(); done(j, body.payment_method);
   } catch { $('err').textContent = 'Sem conexão. Tente novamente.'; btn.disabled = false; }
 }
@@ -341,4 +345,119 @@ function done(j, method) {
     try { const r = await fetch(`/api/public/${slug}/orders/${j.code}`); if (r.ok) { const o = await r.json(); paint(o.status); if (o.paid && $('paidMsg')) $('paidMsg').textContent = 'Pagamento confirmado ✅'; } } catch {}
   }, 15000);
 }
+// ----- abas do rodapé, pedidos neste aparelho e avaliação -----
+const pedidosKey = () => 'pedidos_' + slug;
+function pedidosLocais() { try { return JSON.parse(localStorage.getItem(pedidosKey()) || '[]'); } catch { return []; } }
+function gravaPedidos(l) { try { localStorage.setItem(pedidosKey(), JSON.stringify(l.slice(0, 30))); } catch {} }
+function salvaPedido(j, phone) { gravaPedidos([{ code: j.code, total: j.total, phone, at: Date.now() }, ...pedidosLocais().filter(x => x.code !== j.code)]); }
+function marcaPedido(code, patch) { gravaPedidos(pedidosLocais().map(x => x.code === code ? { ...x, ...patch } : x)); }
+const estrelas = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+function mostra(v) {
+  vistaAtual = v;
+  const mapa = { cardapio: ['hd', 'cats', 'menu'], pedidos: ['v_pedidos'], aval: ['v_aval'], perfil: ['v_perfil'] };
+  for (const id of ['hd', 'cats', 'menu', 'v_pedidos', 'v_aval', 'v_perfil']) $(id).hidden = !mapa[v].includes(id);
+  if (v === 'cardapio') { $('cats').hidden = !$('cats').dataset.multi; updateBar(); }
+  else $('bar').hidden = true;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  window.scrollTo(0, 0);
+  if (v === 'pedidos') viewPedidos();
+  if (v === 'aval') viewAval();
+  if (v === 'perfil') viewPerfil();
+}
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => mostra(b.dataset.v)));
+
+const STATUS_TXT = { novo: 'Recebido', preparando: 'Preparando', saiu: 'Saiu / pronto', entregue: 'Entregue', cancelado: 'Cancelado' };
+async function viewPedidos() {
+  const v = $('v_pedidos');
+  const l = pedidosLocais();
+  v.replaceChildren(h('h2', {}, 'Meus pedidos'), h('p', { class: 'muted' }, 'Pedidos feitos neste aparelho.'));
+  if (!l.length) { v.append(h('p', { class: 'muted', style: 'margin-top:16px' }, 'Você ainda não fez nenhum pedido aqui.')); return; }
+  for (const p of l) {
+    const situacao = h('span', { class: 'muted' }, 'Carregando...');
+    const box = h('div', { class: 'item', style: 'flex-direction:column;gap:6px' }, h('b', {}, '#' + p.code + ' · ' + brl(p.total)), situacao);
+    v.append(box);
+    fetch(`/api/public/${slug}/orders/${p.code}`).then(r => r.ok ? r.json() : null).then(o => {
+      if (!o) { situacao.textContent = 'Pedido não encontrado'; return; }
+      situacao.replaceWith(h('span', {}, 'Situação: ', h('b', {}, STATUS_TXT[o.status] || o.status)));
+      if (o.itens && o.itens.length) box.append(h('span', { class: 'muted' }, o.itens.join(' · ')));
+      if (o.rating) box.append(h('span', { style: 'color:#f59e0b' }, estrelas(o.rating) + ' · sua avaliação'));
+      else if (o.status === 'entregue') box.append(h('button', { class: 'btn', onclick: () => abreAvaliacao(p, false) }, 'Avaliar pedido'));
+    }).catch(() => { situacao.textContent = 'Sem conexão'; });
+  }
+}
+
+function abreAvaliacao(p, automatico) {
+  const d = $('dlg'); d.dataset.view = 'rate';
+  let nota = 0;
+  const erro = h('p', { class: 'err' });
+  const barra = h('div', { style: 'font-size:38px;letter-spacing:6px;text-align:center;margin:12px 0' });
+  const pinta = () => barra.replaceChildren(...[1, 2, 3, 4, 5].map(n => h('span', { style: 'cursor:pointer;color:' + (n <= nota ? '#f59e0b' : '#d1d5db'), onclick: () => { nota = n; pinta(); } }, '★')));
+  pinta();
+  const comentario = h('textarea', { rows: 3, placeholder: 'Conte como foi (opcional)', style: 'width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit' });
+  const enviar = h('button', { class: 'btn', style: 'width:100%;margin-top:12px', onclick: async () => {
+    if (!nota) { erro.textContent = 'Toque em uma estrela.'; return; }
+    enviar.disabled = true;
+    try {
+      const r = await fetch(`/api/public/${slug}/orders/${p.code}/avaliar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating: nota, comment: comentario.value, phone: p.phone }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { erro.textContent = j.error || 'Não foi possível enviar.'; enviar.disabled = false; return; }
+      marcaPedido(p.code, { avaliado: true });
+      d.close();
+      if (vistaAtual === 'pedidos') viewPedidos();
+    } catch { erro.textContent = 'Sem conexão. Tente novamente.'; enviar.disabled = false; }
+  } }, 'Enviar avaliação');
+  d.replaceChildren(h('div', { class: 'pad' },
+    h('h3', {}, 'Como foi seu pedido #' + p.code + '?'),
+    h('p', { class: 'muted' }, 'Sua avaliação ajuda outros clientes.'),
+    barra, comentario, erro, enviar,
+    automatico ? h('button', { class: 'btn ghost', style: 'width:100%;margin-top:10px', onclick: () => { marcaPedido(p.code, { pulou: true }); d.close(); } }, 'Agora não') : null));
+  if (!d.open) d.showModal();
+}
+
+// ao voltar ao site, pergunta sobre o último pedido entregue que ainda não foi avaliado
+async function avaliaAoVoltar() {
+  const pendentes = pedidosLocais().filter(x => !x.avaliado && !x.pulou).slice(0, 5);
+  for (const p of pendentes) {
+    try {
+      const r = await fetch(`/api/public/${slug}/orders/${p.code}`);
+      if (!r.ok) continue;
+      const o = await r.json();
+      if (o.rating) { marcaPedido(p.code, { avaliado: true }); continue; }
+      if (o.status === 'entregue') { abreAvaliacao(p, true); return; }
+    } catch {}
+  }
+}
+
+async function viewAval() {
+  const v = $('v_aval');
+  v.replaceChildren(h('h2', {}, 'Avaliações'), h('p', { class: 'muted' }, 'Carregando...'));
+  try {
+    const r = await fetch(`/api/public/${slug}/avaliacoes`);
+    const j = await r.json();
+    const media = Math.round(j.media || 0);
+    v.replaceChildren(h('h2', {}, 'Avaliações'),
+      h('div', { class: 'item', style: 'flex-direction:column;align-items:center;text-align:center' },
+        h('div', { style: 'font-size:40px;font-weight:800' }, j.total ? String(j.media).replace('.', ',') : '—'),
+        h('div', { style: 'color:#f59e0b;font-size:22px' }, estrelas(media)),
+        h('div', { class: 'muted' }, j.total + (j.total === 1 ? ' avaliação' : ' avaliações'))),
+      ...(j.lista.length
+        ? j.lista.map(a => h('div', { class: 'item', style: 'flex-direction:column;gap:4px' },
+            h('div', { style: 'color:#f59e0b' }, estrelas(a.rating)),
+            a.rating_comment ? h('div', {}, a.rating_comment) : null,
+            h('div', { class: 'muted', style: 'font-size:12px' }, 'Cliente · ' + new Date(a.rated_at.replace(' ', 'T') + 'Z').toLocaleDateString('pt-BR'))))
+        : [h('p', { class: 'muted' }, 'Ainda não há avaliações.')]));
+  } catch { v.replaceChildren(h('h2', {}, 'Avaliações'), h('p', { class: 'err' }, 'Não foi possível carregar.')); }
+}
+
+function viewPerfil() {
+  const apagar = () => { ['nm', 'ph', 'ad'].forEach(k => { try { localStorage.removeItem(k); } catch {} }); try { localStorage.removeItem(pedidosKey()); } catch {} viewPerfil(); };
+  $('v_perfil').replaceChildren(h('h2', {}, 'Perfil'),
+    h('div', { class: 'item', style: 'flex-direction:column;gap:6px' },
+      h('b', {}, ls.get('nm') || 'Sem cadastro neste aparelho'),
+      ls.get('ph') ? h('span', { class: 'muted' }, ls.get('ph')) : null,
+      ls.get('ad') ? h('span', { class: 'muted' }, ls.get('ad')) : null),
+    h('button', { class: 'btn ghost', style: 'width:100%', onclick: apagar }, 'Apagar meus dados neste aparelho'));
+}
+
 load();

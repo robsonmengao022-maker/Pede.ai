@@ -187,7 +187,7 @@ const STATUSES = ['novo', 'preparando', 'saiu', 'entregue', 'cancelado'];
 db.exec(`CREATE TABLE IF NOT EXISTS coupons(id INTEGER PRIMARY KEY, store_id INTEGER NOT NULL, code TEXT NOT NULL,
   kind TEXT NOT NULL, value REAL NOT NULL, min_order REAL DEFAULT 0, max_uses INTEGER DEFAULT 0, used INTEGER DEFAULT 0,
   expires_at TEXT DEFAULT '', active INTEGER DEFAULT 1, UNIQUE(store_id, code));`);
-for (const col of ['discount REAL DEFAULT 0', "coupon TEXT DEFAULT ''", "mp_payment_id TEXT DEFAULT ''", "mp_status TEXT DEFAULT ''"]) { try { db.exec('ALTER TABLE orders ADD COLUMN ' + col); } catch {} }
+for (const col of ['discount REAL DEFAULT 0', "coupon TEXT DEFAULT ''", "mp_payment_id TEXT DEFAULT ''", "mp_status TEXT DEFAULT ''", 'rating INTEGER DEFAULT 0', "rating_comment TEXT DEFAULT ''", "rated_at TEXT DEFAULT ''"]) { try { db.exec('ALTER TABLE orders ADD COLUMN ' + col); } catch {} }
 
 // Valida o cupom e devolve o desconto; lança erro com mensagem para o cliente
 function couponDiscount(storeId, rawCode, subtotal) {

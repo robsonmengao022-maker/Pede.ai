@@ -150,8 +150,31 @@ async function api(req, res, url) {
     return json(res, 200, await quoteDelivery(s, address));
   }
   if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/orders\/([A-F0-9]{6})$/)) && m === 'GET') {
-    const row = db.prepare(`SELECT o.status,o.total,o.mp_status FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.slug=? AND o.code=?`).get(g[1], g[2]);
-    return row ? json(res, 200, { status: row.status, total: row.total, paid: row.mp_status === 'approved' }) : fail(res, 404, 'Pedido não encontrado');
+    const row = db.prepare(`SELECT o.status,o.total,o.mp_status,o.rating,o.items_json FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.slug=? AND o.code=?`).get(g[1], g[2]);
+    if (!row) return fail(res, 404, 'Pedido não encontrado');
+    const itens = JSON.parse(row.items_json || '[]').map(i => i.qty + 'x ' + i.name);
+    return json(res, 200, { status: row.status, total: row.total, paid: row.mp_status === 'approved', rating: row.rating || 0, itens });
+  }
+  if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/orders\/([A-F0-9]{6})\/avaliar$/)) && m === 'POST') {
+    if (limited(req, 'avaliar', 10, 600e3)) return fail(res, 429, 'Muitas tentativas. Tente mais tarde.');
+    const b = await readBody(req);
+    const nota = Math.floor(Number(b.rating));
+    if (!(nota >= 1 && nota <= 5)) return fail(res, 400, 'Escolha de 1 a 5 estrelas.');
+    const row = db.prepare(`SELECT o.id,o.status,o.phone,o.rating FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.slug=? AND o.code=?`).get(g[1], g[2]);
+    if (!row) return fail(res, 404, 'Pedido não encontrado');
+    const fone = str(b.phone, 30).replace(/\D/g, '');
+    if (fone.length < 8 || fone.slice(-8) !== String(row.phone || '').replace(/\D/g, '').slice(-8)) return fail(res, 403, 'Confirme o telefone usado no pedido.');
+    if (row.status !== 'entregue') return fail(res, 400, 'Você poderá avaliar depois que o pedido for entregue.');
+    if (row.rating) return fail(res, 400, 'Este pedido já foi avaliado.');
+    db.prepare(`UPDATE orders SET rating=?, rating_comment=?, rated_at=datetime('now') WHERE id=?`).run(nota, str(b.comment, 500), row.id);
+    return json(res, 200, { ok: true });
+  }
+  if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/avaliacoes$/)) && m === 'GET') {
+    const s = db.prepare('SELECT id FROM stores WHERE slug=?').get(g[1]);
+    if (!s) return fail(res, 404, 'Loja não encontrada');
+    const media = db.prepare('SELECT AVG(rating) a, COUNT(*) n FROM orders WHERE store_id=? AND rating>0').get(s.id);
+    const lista = db.prepare('SELECT rating, rating_comment, rated_at FROM orders WHERE store_id=? AND rating>0 ORDER BY id DESC LIMIT 30').all(s.id);
+    return json(res, 200, { media: media.a ? Math.round(media.a * 10) / 10 : 0, total: media.n, lista });
   }
 
   // ----- admin da plataforma -----
