@@ -144,7 +144,7 @@ function isOpenNow(s) {
   return false;
 }
 const publicStore = s => ({
-  slug: s.slug, name: s.name, whatsapp: s.whatsapp, address: s.address, numero: s.numero || '', bairro: s.bairro || '', city: s.city, uf: s.uf || '', is_open: isOpenNow(s),
+  slug: s.slug, name: s.name, logo_url: s.logo_url || '', capa_url: s.capa_url || '', whatsapp: s.whatsapp, address: s.address, numero: s.numero || '', bairro: s.bairro || '', city: s.city, uf: s.uf || '', is_open: isOpenNow(s),
   prep_time: s.prep_time || '', store_notice: s.store_notice || '', hours: s.hours || '',
   delivery_fee: s.delivery_fee, min_order: s.min_order,
   payments: {
