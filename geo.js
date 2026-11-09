@@ -55,4 +55,26 @@ async function geocode(query) {
   return point;
 }
 
-module.exports = { geocode, haversineKm, kmFromPoints, parseFees, MAX_KM };
+// Monta buscas do mais completo ao mais simples: o mapa não entende bem "- CEP 00000-000"
+// e cidade repetida. Ex.: "Rua X, 240 - Bairro - Cidade - RJ - CEP 20010-000".
+function candidatosEndereco(address, area) {
+  const cepM = String(address).match(/CEP\s*(\d{5})-?(\d{3})/i);
+  const semCep = String(address).replace(/\s*-?\s*CEP\s*[\d-]+/i, '').replace(/\s+/g, ' ').trim();
+  const partes = semCep.split(' - ').map(x => x.trim()).filter(Boolean);
+  const rua = partes[0] || semCep;
+  const lista = [
+    semCep + ', Brasil',
+    [rua, area, 'Brasil'].filter(Boolean).join(', '),
+  ];
+  if (cepM) lista.push(cepM[1] + '-' + cepM[2] + ', Brasil');
+  return [...new Set(lista.map(x => x.replace(/\s+,/g, ',')))];
+}
+async function geocodeEndereco(address, area) {
+  for (const q of candidatosEndereco(address, area)) {
+    const p = await geocode(q);
+    if (p) return p;
+  }
+  return null;
+}
+
+module.exports = { geocode, geocodeEndereco, candidatosEndereco, haversineKm, kmFromPoints, parseFees, MAX_KM };

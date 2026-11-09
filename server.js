@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, monthRevenue, MIME, send, json, fail, readBody, cookies, hashPass, checkPass, limited, slugify, RESERVED, str, num, okUrl, authStore, startSession, publicStore, privateStore, pixPayload, streams, broadcast, STATUSES, orderOut , isOpenNow, cleanHours, cleanGroups, parseGroups } = require('./lib');
 const { receipt } = require('./receipt');
-const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
+const { geocode, geocodeEndereco, kmFromPoints, parseFees, MAX_KM } = require('./geo');
 const { DATA_DIR, couponDiscount } = require('./lib');
 // Pix só conta como pago depois de confirmado (Mercado Pago ou confirmação manual do lojista)
 const pixPago = o => o.payment_method !== 'pix' || ['approved', 'manual'].includes(o.mp_status);
@@ -37,7 +37,7 @@ async function quoteDelivery(store, address) {
   if (!fees) return { error: 'Esta loja ainda não configurou a taxa de entrega. Use a opção de retirada ou fale com a loja.' };
   if (store.lat == null || store.lng == null) return { error: 'A loja ainda não tem o endereço localizado no mapa. Peça para o lojista salvar o endereço nas configurações.' };
   const area = [store.city, store.uf].filter(Boolean).join(' - ');
-  const point = await geocode(`${address}${area ? ', ' + area : ''}, Brasil`);
+  const point = await geocodeEndereco(address, area);
   if (!point) return { error: 'Não encontrei esse endereço. Confira rua, número, bairro e cidade.' };
   const km = kmFromPoints({ lat: store.lat, lng: store.lng }, point);
   if (km > MAX_KM) return { error: `Endereço fora da área de entrega (até ${MAX_KM} km).` };
@@ -324,7 +324,7 @@ async function api(req, res, url) {
     };
     let warning = '';
     if ((f.address || f.city) && (f.address !== store.address || f.city !== store.city || store.lat == null)) {
-      const pt = await geocode(enderecoCompleto(f));
+      const pt = await geocodeEndereco([f.address, f.numero].filter(Boolean).join(', ') + (f.bairro ? ' - ' + f.bairro : ''), [f.city, f.uf].filter(Boolean).join(' - '));
       f.lat = pt ? pt.lat : null;
       f.lng = pt ? pt.lng : null;
       if (!pt) warning = 'Não consegui localizar o endereço da loja no mapa. Confira rua, número e cidade e salve de novo.';
