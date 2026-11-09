@@ -270,6 +270,7 @@ function done(j, method) {
     h('h3', {}, 'Pedido enviado! ✅'),
     h('p', {}, 'Código do pedido: ', h('b', {}, '#' + j.code), ' · Total ', h('b', {}, brl(j.total))),
     st,
+    h('p', { id: 'paidMsg', style: 'color:#15803d;font-weight:700' }),
     method === 'pix' ? h('div', {}, h('b', {}, 'Pague com Pix (copia e cola):'), h('div', { class: 'pix' }, j.pix),
       h('button', { class: 'btn', onclick: e => { navigator.clipboard?.writeText(j.pix).catch(() => {}); e.target.textContent = 'Copiado!'; } }, 'Copiar código Pix'),
       h('p', { style: 'color:var(--mute);font-size:13px' }, 'O pagamento vai direto para a conta da loja. Depois de pagar, é só aguardar.')) : null,
@@ -282,7 +283,7 @@ function done(j, method) {
     h('button', { class: 'btn ghost', style: 'width:100%;margin-top:10px', onclick: () => d.close() }, 'Fechar')));
   const t = setInterval(async () => {
     if (!d.open || d.dataset.view !== 'done') return clearInterval(t);
-    try { const r = await fetch(`/api/public/${slug}/orders/${j.code}`); if (r.ok) paint((await r.json()).status); } catch {}
+    try { const r = await fetch(`/api/public/${slug}/orders/${j.code}`); if (r.ok) { const o = await r.json(); paint(o.status); if (o.paid && $('paidMsg')) $('paidMsg').textContent = 'Pagamento confirmado ✅'; } } catch {}
   }, 15000);
 }
 load();

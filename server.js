@@ -8,6 +8,7 @@ const { PORT, ADMIN_PASSWORD, PUBLIC, db, FEE_TIERS, monthlyFee, monthKey, month
 const { receipt } = require('./receipt');
 const { geocode, kmFromPoints, parseFees, MAX_KM } = require('./geo');
 const { DATA_DIR, couponDiscount } = require('./lib');
+const { mpReady, criarPix, buscarPagamento } = require('./mp');
 const { sendMail, mailReady } = require('./mail');
 
 const codeHash = code => crypto.createHash('sha256').update('pedeai-reset:' + code).digest('hex');
@@ -103,10 +104,31 @@ async function api(req, res, url) {
     if (couponId) db.prepare('UPDATE coupons SET used=used+1 WHERE id=?').run(couponId);
     const order = orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(r.lastInsertRowid));
     broadcast(s.id, 'order', order);
+    let mpPix = '';
+    if (method === 'pix' && mpReady()) {
+      try {
+        const pay = await criarPix({ amount: total, description: `Pedido ${code} - ${s.name}`, email: `pedido${code.toLowerCase()}@pedeai.app`, idem: `${code}-${r.lastInsertRowid}` });
+        db.prepare('UPDATE orders SET mp_payment_id=?, mp_status=? WHERE id=?').run(pay.id, pay.status, r.lastInsertRowid);
+        mpPix = pay.qr;
+      } catch (e) { console.error('Mercado Pago (Pix):', e.message); }
+    }
     const out = { code, total, status: 'novo' };
-    if (method === 'pix') out.pix = pixPayload({ key: s.pix_key, name: s.pix_name || s.name, city: s.city, amount: total, txid: code });
+    if (method === 'pix') out.pix = mpPix || pixPayload({ key: s.pix_key, name: s.pix_name || s.name, city: s.city, amount: total, txid: code });
     if (method === 'link') out.payment_link = s.payment_link;
     return json(res, 201, out);
+  }
+  if (p === '/api/mercadopago/webhook' && m === 'POST') {
+    const b = await readBody(req).catch(() => ({}));
+    const id = (b.data && b.data.id) || url.searchParams.get('data.id') || url.searchParams.get('id');
+    if (id && mpReady()) {
+      try {
+        const pay = await buscarPagamento(id);
+        db.prepare('UPDATE orders SET mp_status=? WHERE mp_payment_id=?').run(pay.status, pay.id);
+        const o = db.prepare('SELECT * FROM orders WHERE mp_payment_id=?').get(pay.id);
+        if (o) broadcast(o.store_id, 'order', orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(o.id)));
+      } catch (e) { console.error('Mercado Pago (webhook):', e.message); }
+    }
+    return json(res, 200, { ok: true });
   }
   if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/coupon$/)) && m === 'GET') {
     const s = db.prepare('SELECT id FROM stores WHERE slug=?').get(g[1]);
@@ -123,8 +145,8 @@ async function api(req, res, url) {
     return json(res, 200, await quoteDelivery(s, address));
   }
   if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)\/orders\/([A-F0-9]{6})$/)) && m === 'GET') {
-    const row = db.prepare(`SELECT o.status,o.total FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.slug=? AND o.code=?`).get(g[1], g[2]);
-    return row ? json(res, 200, row) : fail(res, 404, 'Pedido não encontrado');
+    const row = db.prepare(`SELECT o.status,o.total,o.mp_status FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.slug=? AND o.code=?`).get(g[1], g[2]);
+    return row ? json(res, 200, { status: row.status, total: row.total, paid: row.mp_status === 'approved' }) : fail(res, 404, 'Pedido não encontrado');
   }
 
   // ----- admin da plataforma -----
