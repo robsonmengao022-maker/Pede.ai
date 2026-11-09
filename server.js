@@ -501,6 +501,6 @@ async function conferePixPendentes() {
     } catch (e) { console.error('Mercado Pago (conferência):', e.message); }
   }
 }
-setInterval(() => conferePixPendentes().catch(() => {}), Number(process.env.PIX_CONFERE_MS) || 30e3).unref();
+setInterval(() => conferePixPendentes().catch(() => {}), Number(process.env.PIX_CONFERE_MS) || 5e3).unref();
 
 server.listen(PORT, () => console.log(`Pedeaí rodando em http://localhost:${PORT}`));
