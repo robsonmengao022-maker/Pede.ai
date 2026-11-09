@@ -126,6 +126,7 @@ async function api(req, res, url) {
     broadcast(s.id, 'order', order);
     let mpPix = '';
     const tkMP = method === 'pix' ? await tokenMP(s) : null;
+    if (method === 'pix' && !tkMP && !s.pix_key) return fail(res, 400, 'Esta loja ainda não configurou o Pix. Escolha outra forma de pagamento.');
     if (tkMP) {
       try {
         const pay = await criarPix({ token: tkMP, amount: total, description: `Pedido ${code} - ${s.name}`, email: `pedido${code.toLowerCase()}@pedeai.app`, idem: `${code}-${r.lastInsertRowid}` });
@@ -340,7 +341,7 @@ async function api(req, res, url) {
     }
     f.prep_time = str(b.prep_time, 30); f.store_notice = str(b.store_notice, 200);
     if (b.hours !== undefined) f.hours = cleanHours(b.hours);
-    if (f.accepts_pix && !f.pix_key) return fail(res, 400, 'Para aceitar Pix, informe sua chave Pix.');
+    if (f.accepts_pix && !f.pix_key && !store.mp_access_token) return fail(res, 400, 'Para aceitar Pix, informe sua chave Pix ou conecte sua conta do Mercado Pago.');
     if (f.accepts_link && !f.payment_link) return fail(res, 400, 'Para aceitar link de pagamento, informe um link válido (https://...).');
     const cols = Object.keys(f);
     db.prepare(`UPDATE stores SET ${cols.map(c => c + '=?').join(',')} WHERE id=?`).run(...cols.map(c => f[c]), store.id);

@@ -158,7 +158,7 @@ const publicStore = s => ({
   prep_time: s.prep_time || '', store_notice: s.store_notice || '', hours: s.hours || '',
   delivery_fee: s.delivery_fee, min_order: s.min_order,
   payments: {
-    pix: !!(s.accepts_pix && s.pix_key), cash: !!s.accepts_cash, card_delivery: !!s.accepts_card_delivery,
+    pix: !!(s.accepts_pix && (s.pix_key || s.mp_access_token)), cash: !!s.accepts_cash, card_delivery: !!s.accepts_card_delivery,
     link: !!(s.accepts_link && s.payment_link),
   },
 });

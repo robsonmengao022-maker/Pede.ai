@@ -269,6 +269,7 @@ function viewConfig() {
     h('h3', { style: 'margin:18px 0 0' }, 'Formas de pagamento'),
     h('p', { class: 'muted', style: 'margin:4px 0' }, 'O dinheiro de Pix e cartão cai direto na SUA conta. A Pedeaí não recebe nem segura nenhum valor das suas vendas.'),
     chk('s_pix', 'Aceitar Pix', s.accepts_pix),
+    h('p', { class: 'muted', style: 'margin:4px 0 8px' }, s.mp_conectado ? 'Sua conta do Mercado Pago está conectada: o Pix é automático e você não precisa informar chave.' : 'Sem conta do Mercado Pago conectada, informe a chave Pix abaixo e confirme os pagamentos manualmente.'),
     h('div', { class: 'grid' }, h('div', {}, h('label', {}, 'Sua chave Pix'), h('input', { id: 's_pixkey', value: s.pix_key, placeholder: 'CPF, CNPJ, e-mail, telefone ou chave aleatória' })),
       h('div', {}, h('label', {}, 'Nome do recebedor (como no banco)'), h('input', { id: 's_pixname', value: s.pix_name }))),
     chk('s_cash', 'Aceitar dinheiro na entrega', s.accepts_cash),
