@@ -80,10 +80,10 @@ function chgSimple(id, d) {
 function precoUnit(l) {
   const p = data.products.find(x => x.id === l.id); if (!p) return 0;
   let extra = 0;
-  for (const g of groupsOf(p)) for (const it of g.items) if ((l.picks[g.name] || []).includes(it.name)) extra += it.price;
+  for (const g of groupsOf(p)) for (const nm of (l.picks[g.name] || [])) { const it = g.items.find(x => x.name === nm); if (it) extra += it.price; }
   return p.price + extra;
 }
-const textoEscolhas = l => Object.entries(l.picks).filter(([, v]) => v.length).map(([g, v]) => g + ': ' + v.join(', ')).join(' · ');
+const textoEscolhas = l => Object.entries(l.picks).filter(([, v]) => v.length).map(([g, v]) => g + ': ' + [...new Set(v)].map(nm => nm + (v.filter(x => x === nm).length > 1 ? ' x' + v.filter(x => x === nm).length : '')).join(', ')).join(' · ');
 const subtotal = () => lines.reduce((a, l) => a + precoUnit(l) * l.qty, 0);
 const totalQtd = () => lines.reduce((a, l) => a + l.qty, 0);
 
@@ -105,30 +105,50 @@ function openConfig(p) {
   let msg = '';
 
   const total = () => {
-    let extra = 0; for (const g of gs) for (const it of g.items) if (picks[g.name].includes(it.name)) extra += it.price;
+    let extra = 0; for (const g of gs) for (const nm of picks[g.name]) { const it = g.items.find(x => x.name === nm); if (it) extra += it.price; }
     return (p.price + extra) * qty;
   };
   const atualiza = () => { if (totalEl) totalEl.textContent = brl(total()); if (qtdEl) qtdEl.textContent = qty; };
 
+  const circ = sel => 'width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 34px;border:none;' +
+    (sel ? 'background:var(--brand);color:#fff' : 'border:1.5px solid var(--brand);color:var(--brand);background:#fff');
+
+  // escolha única (combo): toca para marcar/desmarcar
   function marca(g, it) {
-    const sel = picks[g.name].includes(it.name);
     msg = '';
-    if (sel) picks[g.name] = picks[g.name].filter(x => x !== it.name);
-    else if (g.max === 1) picks[g.name] = [it.name];
-    else if (picks[g.name].length >= g.max) msg = `Em "${g.name}" você pode escolher no máximo ${g.max}.`;
-    else picks[g.name].push(it.name);
+    picks[g.name] = picks[g.name][0] === it.name ? [] : [it.name];
+    redraw();
+  }
+  // adicionais: + e − por opção, respeitando o total do grupo
+  function mais(g, it) {
+    msg = '';
+    if (picks[g.name].length >= g.max) { msg = `Em "${g.name}" você pode escolher no máximo ${g.max}.`; return redraw(); }
+    picks[g.name].push(it.name); redraw();
+  }
+  function menos(g, it) {
+    msg = '';
+    const i = picks[g.name].lastIndexOf(it.name);
+    if (i >= 0) picks[g.name].splice(i, 1);
     redraw();
   }
 
   const linha = (g, it) => {
-    const sel = picks[g.name].includes(it.name);
-    const circ = `width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 34px;` +
-      (sel ? 'background:var(--brand);color:#fff' : 'border:1.5px solid var(--brand);color:var(--brand)');
-    return h('div', { style: 'display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer', onclick: () => marca(g, it) },
-      h('div', { style: 'flex:1;min-width:0' },
-        h('div', { style: 'font-weight:600;text-transform:uppercase;font-size:15px' }, it.name),
-        h('div', { style: 'color:var(--brand);font-weight:700;margin-top:4px' }, it.price ? '+ ' + brl(it.price) : 'Grátis')),
-      h('span', { style: circ }, sel ? '✓' : (g.max === 1 ? '○' : '+')));
+    const n = picks[g.name].filter(x => x === it.name).length;
+    const nome = h('div', { style: 'flex:1;min-width:0' },
+      h('div', { style: 'font-weight:600;text-transform:uppercase;font-size:15px' }, it.name),
+      h('div', { style: 'color:var(--brand);font-weight:700;margin-top:4px' }, it.price ? '+ ' + brl(it.price) : 'Grátis'));
+    if (g.max === 1) {
+      const sel = n > 0;
+      return h('div', { style: 'display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer', onclick: () => marca(g, it) },
+        nome, h('span', { style: circ(sel) }, sel ? '✓' : '○'));
+    }
+    return h('div', { style: 'display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)' },
+      nome,
+      n > 0
+        ? h('span', { class: 'step' }, h('button', { onclick: () => menos(g, it) }, '−'),
+            h('span', { style: 'min-width:22px;text-align:center;font-weight:700' }, String(n)),
+            h('button', { onclick: () => mais(g, it) }, '+'))
+        : h('button', { style: circ(false) + ';cursor:pointer', onclick: () => mais(g, it) }, '+'));
   };
 
   const secao = g => h('div', { style: 'margin-top:20px' },

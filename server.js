@@ -72,13 +72,15 @@ async function api(req, res, url) {
       let extra = 0; const txt = [];
       for (const g of parseGroups(prod.groups_json)) {
         const mine = (Array.isArray(it.choices) ? it.choices : []).find(x => x && x.group === g.name);
-        const uniq = [...new Set(mine && Array.isArray(mine.picks) ? mine.picks.map(v => str(v, 60)) : [])];
-        if (uniq.length < g.min || uniq.length > g.max) return fail(res, 400, `Em "${g.name}", escolha de ${g.min} a ${g.max} opção(ões).`);
-        const chosen = uniq.map(nm => {
+        const lista = mine && Array.isArray(mine.picks) ? mine.picks.map(v => str(v, 60)) : [];
+        if (lista.length < g.min || lista.length > g.max) return fail(res, 400, `Em "${g.name}", escolha de ${g.min} a ${g.max} opção(ões).`);
+        if (g.max === 1 && lista.length > 1) return fail(res, 400, `Em "${g.name}", escolha só uma opção.`);
+        const cont = new Map(); for (const nm of lista) cont.set(nm, (cont.get(nm) || 0) + 1);
+        const chosen = [...cont].map(([nm, n]) => {
           const opt = g.items.find(x => x.name === nm);
           if (!opt) return null;
-          extra += opt.price;
-          return opt.name + (opt.price ? ` (+ ${brlTxt(opt.price)})` : '');
+          extra += opt.price * n;
+          return opt.name + (n > 1 ? ` x${n}` : '') + (opt.price ? ` (+ ${brlTxt(opt.price * n)})` : '');
         });
         if (chosen.includes(null)) return fail(res, 400, 'Opção inválida no carrinho.');
         if (chosen.length) txt.push(`${g.name}: ${chosen.join(', ')}`);
