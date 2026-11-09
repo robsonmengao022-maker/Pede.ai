@@ -149,6 +149,14 @@ function cuponsCard() {
 }
 
 // ---------- Configurações ----------
+// Lista de horários de 30 em 30 minutos (mais simples no celular que o relógio)
+function horaSelect(id, valor) {
+  const opts = [];
+  for (let t = 0; t < 1440; t += 30) opts.push(String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'));
+  if (valor && !opts.includes(valor)) { opts.push(valor); opts.sort(); }
+  return h('select', { id, style: 'width:120px' }, opts.map(v => h('option', { value: v, selected: v === valor }, v)));
+}
+
 // Busca rua, bairro, cidade e UF pelo CEP (ViaCEP)
 async function buscaCep(cep) {
   const msg = $('s_cepmsg'); if (msg) msg.textContent = 'Buscando endereço...';
@@ -195,8 +203,8 @@ function viewConfig() {
     h('p', { class: 'muted', style: 'margin:4px 0' }, 'Sem horário, a loja fica aberta enquanto o botão "Loja aberta" estiver marcado. Com horário, ela abre e fecha sozinha.'),
     ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((dia, i) => h('div', { class: 'row', style: 'margin:8px 0;flex-wrap:wrap;gap:8px' },
       h('label', { class: 'chk', style: 'margin:0;flex:0 0 100px' }, h('input', { type: 'checkbox', id: 'h_on' + i, checked: !!(hours[i] && hours[i].on) }), dia),
-      h('input', { type: 'time', id: 'h_o' + i, value: (hours[i] && hours[i].open) || '08:00', style: 'width:104px;font-size:14px;padding:8px' }),
-      h('input', { type: 'time', id: 'h_c' + i, value: (hours[i] && hours[i].close) || '22:00', style: 'width:104px;font-size:14px;padding:8px' }))),
+      horaSelect('h_o' + i, (hours[i] && hours[i].open) || '08:00'),
+      horaSelect('h_c' + i, (hours[i] && hours[i].close) || '22:00'))),
     h('div', { class: 'grid', style: 'margin-top:10px' },
       h('div', {}, h('label', {}, 'Tempo de preparo (ex.: 30-40 min)'), h('input', { id: 's_prep', value: s.prep_time || '' })),
       h('div', {}, h('label', {}, 'Aviso para o cliente (opcional)'), h('input', { id: 's_notice', value: s.store_notice || '', placeholder: 'Ex.: Estamos com fila, pedidos podem demorar' }))),
