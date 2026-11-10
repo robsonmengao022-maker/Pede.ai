@@ -2,6 +2,7 @@
 // Fechamento de caixa automático, todo dia às 02:00 (horário de Brasília, UTC-3, sem horário de verão).
 // Cada fechamento cobre os pedidos das 02:00 do dia anterior até as 02:00 do dia, e é enviado para o e-mail da loja.
 
+const HORA_FECHAMENTO = 3; // horário de Brasília em que o fechamento é enviado
 const brl = v => 'R$ ' + ((Math.round(Number(v || 0) * 100)) / 100).toFixed(2).replace('.', ',');
 const cents = v => Math.round(Number(v || 0) * 100);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -15,7 +16,7 @@ function hora(s) {
 
 // Janela do fechamento que acontece às 02:00 de "dia" (AAAA-MM-DD, horário de Brasília)
 function janela(dia) {
-  const fim = new Date(dia + 'T05:00:00Z'); // 02:00 em UTC-3
+  const fim = new Date(dia + 'T' + String(HORA_FECHAMENTO + 3).padStart(2, '0') + ':00:00Z'); // horário local em UTC-3
   const ini = new Date(fim.getTime() - 24 * 3600e3);
   const f = d => d.toISOString().slice(0, 19).replace('T', ' ');
   return { ini: f(ini), fim: f(fim) };
@@ -59,7 +60,7 @@ function relatorio(store, pedidos, dia) {
 
   return `<div style="font-family:Arial,sans-serif;max-width:600px">
   <h2 style="margin:0 0 4px">Fechamento de caixa — ${esc(store.name)}</h2>
-  <p style="margin:0 0 16px;color:#555">Período: ${ontem} 02:00 até ${hoje} 02:00</p>
+  <p style="margin:0 0 16px;color:#555">Período: ${ontem} ${String(HORA_FECHAMENTO).padStart(2, '0')}:00 até ${hoje} ${String(HORA_FECHAMENTO).padStart(2, '0')}:00</p>
   <h3>Pedidos</h3>${linhas}
   <h3>Resumo</h3>
   <table style="width:100%;border-collapse:collapse">
@@ -93,7 +94,7 @@ function agendaFechamento(deps) {
   deps.db.exec('CREATE TABLE IF NOT EXISTS fechamentos(store_id INTEGER, dia TEXT, enviado_em TEXT, PRIMARY KEY(store_id, dia))');
   const tick = async () => {
     const loc = new Date(Date.now() - 3 * 3600e3);
-    if (loc.getUTCHours() !== 2 || loc.getUTCMinutes() > 10) return;
+    if (loc.getUTCHours() !== HORA_FECHAMENTO || loc.getUTCMinutes() > 10) return;
     const dia = loc.toISOString().slice(0, 10);
     const lojas = deps.db.prepare('SELECT * FROM stores WHERE id NOT IN (SELECT store_id FROM fechamentos WHERE dia=?)').all(dia);
     for (const s of lojas) {
