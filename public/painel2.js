@@ -387,3 +387,94 @@ function desenhaMapa() {
   mapaMB.fitBounds(pts, { padding: [30, 30], maxZoom: 16 });
 }
 setInterval(async () => { if (tab === 'entregadores') { await carregaMotoboys(); desenhaMapa(); } }, 15000);
+
+// ---------- Impressora Bluetooth (somente no app Android) ----------
+// Monta a comanda em texto puro (48 colunas, 80 mm), para a impressora ESC/POS do app.
+function comandaTexto(o) {
+  const W = 48;
+  const linha = (c = '-') => c.repeat(W);
+  const central = t => ' '.repeat(Math.max(0, Math.floor((W - t.length) / 2))) + t;
+  const par = (a, b) => a + ' '.repeat(Math.max(1, W - a.length - b.length)) + b;
+  const money = v => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
+  const L = [];
+  L.push(central(String(me.name).toUpperCase()));
+  L.push(linha('='));
+  L.push(central('PEDIDO #' + o.code));
+  const dt = new Date(String(o.created_at).replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  L.push(central(dt));
+  L.push(central(o.kind === 'entrega' ? '*** ENTREGA ***' : '*** RETIRADA ***'));
+  L.push(linha());
+  L.push('Cliente: ' + o.customer_name);
+  L.push('Telefone: ' + o.phone);
+  if (o.kind === 'entrega') L.push('Endereco: ' + o.address);
+  L.push(linha());
+  o.items.forEach(i => {
+    L.push(par(i.qty + 'x ' + i.name, money(i.qty * i.price)));
+    if (i.choices) String(i.choices).split(' · ').forEach(c => L.push('   ' + c));
+    if (i.obs) L.push('   Obs: ' + i.obs);
+  });
+  L.push(linha());
+  if (o.discount) L.push(par('Desconto', '-' + money(o.discount)));
+  if (o.delivery_fee) L.push(par('Taxa de entrega', money(o.delivery_fee)));
+  L.push(par('TOTAL', money(o.total)));
+  const pagto = (PAY[o.payment_method] || o.payment_method) + (o.payment_method === 'pix' ? (pixPago(o) ? ' (PAGO)' : ' (AGUARDANDO)') : '');
+  L.push(par('Pagamento', pagto));
+  if (o.payment_method === 'dinheiro' && o.change_for) L.push(par('Troco para', String(o.change_for)));
+  if (o.notes) { L.push(linha()); L.push('OBS DO PEDIDO: ' + o.notes); }
+  L.push(linha('='));
+  L.push(central('Obrigado por realizar seu pedido!'));
+  L.push(central('Obrigado por escolher ' + me.name + '.'));
+  return L.join('\n') + '\n';
+}
+
+// Barra no topo dos pedidos: impressora escolhida e teste
+function impressoraBar() {
+  if (!window.AndroidPrinter) return null;
+  let atual = {};
+  try { atual = JSON.parse(AndroidPrinter.impressora()); } catch {}
+  return h('div', { class: 'card', style: 'display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap' },
+    h('div', {}, h('b', {}, 'Impressora: '), atual.name ? atual.name : h('span', { class: 'muted' }, 'não escolhida')),
+    h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
+      h('button', { class: 'btn g s', onclick: () => AndroidPrinter.imprimir('Teste de impressão - Pedeaí\n\n\n') }, 'Testar'),
+      h('button', { class: 'btn s', onclick: () => abreImpressoras() }, 'Escolher impressora')));
+}
+
+// Janela para buscar, parear e escolher a impressora Bluetooth
+function abreImpressoras() {
+  const msg = h('p', { class: 'muted', style: 'margin:6px 0' }, 'Ligue a impressora, deixe ela perto do celular e toque em Buscar.');
+  const lista = h('div', {});
+  let timer = null;
+  const fecha = () => { clearInterval(timer); box.remove(); };
+  const pinta = () => {
+    let pares = [], achadas = [];
+    try { pares = JSON.parse(AndroidPrinter.pareadas()); } catch {}
+    try { achadas = JSON.parse(AndroidPrinter.encontradas()); } catch {}
+    const todas = pares.map(d => ({ ...d, pareada: true }));
+    achadas.forEach(d => { if (!todas.some(x => x.address === d.address)) todas.push({ ...d, pareada: false }); });
+    lista.replaceChildren(...(todas.length ? todas.map(d => h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee' },
+      h('span', {}, d.name + (d.pareada ? '' : ' (não pareada)')),
+      h('button', { class: 'btn s', onclick: () => {
+        if (!d.pareada) { AndroidPrinter.parear(d.address); msg.textContent = 'Confirme o pareamento no aviso do celular (a senha costuma ser 0000 ou 1234) e toque em Buscar de novo.'; return; }
+        AndroidPrinter.salvarImpressora(d.address, d.name);
+        fecha();
+        if (tab === 'pedidos') viewOrders();
+      } }, d.pareada ? 'Usar' : 'Parear')))
+      : [h('p', { class: 'muted' }, 'Nenhuma impressora encontrada ainda.')]));
+  };
+  const box = h('div', { style: 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:999' },
+    h('div', { class: 'card', style: 'max-width:440px;width:100%;max-height:85vh;overflow:auto;background:#fff;color:#222;margin:0' },
+      h('h3', { style: 'margin-top:0' }, 'Impressora Bluetooth'),
+      msg, lista,
+      h('div', { style: 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap' },
+        h('button', { class: 'btn', onclick: () => {
+          if (!AndroidPrinter.buscar()) { AndroidPrinter.pedirPermissao(); msg.textContent = 'Aceite a permissão de Bluetooth e toque em Buscar de novo.'; return; }
+          msg.textContent = 'Procurando impressoras...';
+          clearInterval(timer);
+          timer = setInterval(pinta, 2000);
+          setTimeout(() => { clearInterval(timer); msg.textContent = 'Busca terminada. Se a impressora não aparecer, ligue ela e toque em Buscar de novo.'; }, 13000);
+          pinta();
+        } }, 'Buscar'),
+        h('button', { class: 'btn g', onclick: fecha }, 'Fechar'))));
+  document.body.append(box);
+  pinta();
+}

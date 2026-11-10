@@ -93,6 +93,7 @@ function viewOrders() {
       h('div', { class: 'chk' }, h('input', { type: 'checkbox', id: 'snd', checked: ls.get('snd', '1') === '1', onchange: e => { ls.set('snd', e.target.checked ? '1' : '0'); if (e.target.checked) beep(); } }), h('label', { for: 'snd', style: 'margin:0;color:inherit' }, 'Tocar som quando chegar pedido')),
       h('div', { class: 'chk' }, h('input', { type: 'checkbox', id: 'aprint', checked: ls.get('aprint', '0') === '1', onchange: e => ls.set('aprint', e.target.checked ? '1' : '0') }), h('label', { for: 'aprint', style: 'margin:0;color:inherit' }, 'Imprimir automaticamente cada pedido novo')),
       h('p', { class: 'muted', style: 'margin:6px 0 0' }, 'Mantenha esta página aberta no computador da loja. Para imprimir sem janela de confirmação, veja o passo a passo da impressora no README.')),
+    impressoraBar(),
     h('h2', { style: 'font-size:17px' }, 'Em andamento (' + active.length + ')'),
     active.length ? active.map(orderCard) : h('p', { class: 'muted' }, 'Nenhum pedido em andamento. Seu link: ' + location.origin + '/' + me.slug),
     hist.length ? [h('h2', { style: 'font-size:17px' }, 'Finalizados (últimos 2 dias)'), hist.slice(0, 40).map(orderCard)] : null);
@@ -125,6 +126,11 @@ async function setStatus(o, s) {
   try { await api(`/orders/${o.id}/status`, 'PUT', { status: s }); o.status = s; viewOrders(); } catch (e) { alert(e.message); }
 }
 function printOrder(id) {
+  if (window.AndroidPrinter) {
+    const o = orders.find(x => x.id === id);
+    if (o) AndroidPrinter.imprimir(comandaTexto(o));
+    return;
+  }
   const f = h('iframe', { src: '/recibo/' + id, style: 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none' });
   document.body.append(f); setTimeout(() => f.remove(), 60000);
 }

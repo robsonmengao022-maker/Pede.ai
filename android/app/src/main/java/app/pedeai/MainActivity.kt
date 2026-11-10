@@ -14,6 +14,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
+import android.Manifest
+import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
@@ -21,6 +23,16 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+
+    private val permBluetooth = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+
+    // Pede a permissão de Bluetooth (e localização, nas versões antigas do Android, para buscar impressoras)
+    fun pedirBluetooth() {
+        val perms = if (Build.VERSION.SDK_INT >= 31)
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+        else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        permBluetooth.launch(perms)
+    }
 
     private val pickFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
         val uris = WebChromeClient.FileChooserParams.parseResult(res.resultCode, res.data)
@@ -83,6 +95,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        web.addJavascriptInterface(PrinterBridge(this), "AndroidPrinter")
         web.loadUrl(SITE)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
