@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Minhas entregas · Pedeaí</title>
+<style>
+  :root { --bg:#f5f4f7; --card:#ffffff; --txt:#1d1b22; --muted:#6c6876; --brand:#6b3a8f; --ok:#1a7f37; --line:#e4e1ea; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121116; --card:#1f1d26; --txt:#f2f0f6; --muted:#a6a2b2; --brand:#a77bd1; --ok:#3ccf6a; --line:#2e2b38; } }
+  :root[data-theme="dark"] { --bg:#121116; --card:#1f1d26; --txt:#f2f0f6; --muted:#a6a2b2; --brand:#a77bd1; --ok:#3ccf6a; --line:#2e2b38; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,Arial,sans-serif; padding:16px 16px 40px; }
+  h1 { font-size:20px; margin:4px 0 2px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0; }
+  .card ul { margin:6px 0; padding-left:18px; }
+  .btn { display:block; width:100%; box-sizing:border-box; text-align:center; background:var(--brand); color:#fff; border:0; border-radius:10px; padding:14px; font-size:16px; font-weight:600; text-decoration:none; margin-top:8px; }
+  .btn:disabled { background:var(--ok); }
+  .btn.sec { background:transparent; color:var(--brand); border:1px solid var(--brand); }
+  #sinal { margin-top:10px; font-size:14px; color:var(--muted); min-height:20px; }
+  a { color:var(--brand); }
+</style>
+</head>
+<body>
+<h1 id="nome">Carregando...</h1>
+<div class="muted" id="loja"></div>
+
+<button class="btn" id="btn">Iniciar entregas</button>
+<div id="sinal">Toque em "Iniciar entregas" e aceite a localização, para a loja ver onde você está.</div>
+<p class="muted">Deixe esta página aberta enquanto estiver entregando. Se a tela apagar, o envio da localização para.</p>
+
+<h2 style="font-size:17px;margin-top:22px">Entregas com você</h2>
+<div id="lista"></div>
+
+<script>
+  const token = location.pathname.split('/').pop();
+  const PAG = { pix: 'Pix (pago)', dinheiro: 'Dinheiro', cartao_entrega: 'Maquininha', link: 'Link de pagamento' };
+  const $ = id => document.getElementById(id);
+  const brl = v => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let watchId = null, wake = null, timer = null, ultimaPos = null;
+
+  async function carrega() {
+    try {
+      const r = await fetch('/api/driver/' + token);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { $('nome').textContent = 'Link inválido'; $('lista').innerHTML = '<p class="muted">' + esc(j.error || 'Peça um novo link ao dono da loja.') + '</p>'; return; }
+      $('nome').textContent = 'Olá, ' + j.name + '!';
+      $('loja').textContent = j.store;
+      $('lista').innerHTML = j.pedidos.length ? j.pedidos.map(p => `
+        <div class="card">
+          <b>Pedido #${esc(p.code)}</b> · ${esc(p.customer_name)}
+          <div class="muted">📍 ${esc(p.address)}</div>
+          <div class="muted">☎ <a href="tel:${esc(String(p.phone || '').replace(/\D/g, ''))}">${esc(p.phone)}</a></div>
+          <ul>${p.items.map(i => `<li>${esc(i.qty)}x ${esc(i.name)}${i.choices ? ' (' + esc(i.choices) + ')' : ''}</li>`).join('')}</ul>
+          ${p.notes ? '<div class="muted">Obs: ' + esc(p.notes) + '</div>' : ''}
+          <div>${esc(PAG[p.payment_method] || p.payment_method)} · <b>${brl(p.total)}</b>${p.payment_method === 'dinheiro' && p.change_for ? ' (troco p/ ' + esc(p.change_for) + ')' : ''}</div>
+          <a class="btn sec" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}" target="_blank" rel="noopener">Abrir no mapa</a>
+        </div>`).join('') : '<p class="muted">Nenhuma entrega no momento.</p>';
+    } catch { $('lista').innerHTML = '<p class="muted">Sem internet. Tentando de novo...</p>'; }
+  }
+
+  async function envia(pos) {
+    try {
+      const r = await fetch('/api/driver/' + token + '/pos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }) });
+      if (!r.ok) throw new Error();
+      $('sinal').textContent = 'Localização enviada às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch { $('sinal').textContent = 'Sem internet agora. Tentando de novo...'; }
+  }
+
+  async function segurarTela() {
+    try { wake = await navigator.wakeLock.request('screen'); } catch {}
+  }
+
+  function iniciar() {
+    if (!navigator.geolocation) { $('sinal').textContent = 'Este celular não oferece localização no navegador.'; return; }
+    watchId = navigator.geolocation.watchPosition(
+      p => { ultimaPos = p; },
+      e => { $('sinal').textContent = 'Permita a localização para este site nas configurações do navegador. (' + e.message + ')'; },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    timer = setInterval(() => { if (ultimaPos) envia(ultimaPos); }, 10000);
+    $('btn').textContent = 'Entregas ativas ✓';
+    $('btn').disabled = true;
+    segurarTela();
+  }
+
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && watchId !== null) segurarTela(); });
+  $('btn').onclick = iniciar;
+  carrega();
+  setInterval(carrega, 30000);
+</script>
+</body>
+</html>

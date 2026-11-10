@@ -69,21 +69,21 @@ async function start(t) {
   connect(); loadOrders();
 }
 function render() {
-  const tabs = [['pedidos', 'Pedidos'], ['cardapio', 'Cardápio'], ['config', 'Configurações'], ['mensalidade', 'Mensalidade']];
+  const tabs = [['pedidos', 'Pedidos'], ['entregadores', 'Entregadores'], ['cardapio', 'Cardápio'], ['config', 'Configurações'], ['mensalidade', 'Mensalidade']];
   $('app').replaceChildren(
     h('div', { class: 'top' }, h('h1', {}, me.name + ' ', h('span', {}, '· Pedeaí')),
       h('div', { class: 'row' }, h('a', { class: 'btn g s', href: '/' + me.slug, target: '_blank', style: 'text-decoration:none' }, 'Ver meu site'),
         h('button', { class: 'btn g s', onclick: async () => { await api('/logout', 'POST'); es && es.close(); showAuth(); } }, 'Sair'))),
     h('div', { class: 'tabs' }, tabs.map(([k, n]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; render(); } }, n))),
     h('div', { id: 'view' }));
-  ({ pedidos: viewOrders, cardapio: viewMenu, config: viewConfig, mensalidade: viewBilling })[tab]();
+  ({ pedidos: viewOrders, entregadores: viewDrivers, cardapio: viewMenu, config: viewConfig, mensalidade: viewBilling })[tab]();
 }
 
 // ---------- Pedidos ----------
 const NEXT = { novo: ['preparando', 'Aceitar e preparar'], preparando: ['saiu', 'Saiu para entrega / pronto'], saiu: ['entregue', 'Marcar entregue'] };
 const SLABEL = { novo: 'NOVO', preparando: 'Preparando', saiu: 'Saiu / pronto', entregue: 'Entregue', cancelado: 'Cancelado' };
 const PAY = { pix: 'Pix', dinheiro: 'Dinheiro', cartao_entrega: 'Cartão na entrega', link: 'Link de pagamento' };
-async function loadOrders() { try { orders = await api('/orders'); if (tab === 'pedidos') viewOrders(); } catch {} }
+async function loadOrders() { try { orders = await api('/orders'); await carregaMotoboys(); if (tab === 'pedidos') viewOrders(); } catch {} }
 function viewOrders() {
   const v = $('view'); if (!v) return;
   const active = orders.filter(o => !['entregue', 'cancelado'].includes(o.status));
@@ -115,9 +115,10 @@ function orderCard(o) {
     h('div', {}, h('b', {}, 'Total ' + brl(o.total)), ' · ' + PAY[o.payment_method] + (o.change_for ? ' (troco p/ ' + o.change_for + ')' : '')),
     h('div', { class: 'acts' },
       pend ? h('button', { class: 'btn s', onclick: () => confirmaPix(o) }, 'Pix recebido: confirmar') : null,
-      nx && !pend ? h('button', { class: 'btn s', onclick: () => setStatus(o, nx[0]) }, nx[1]) : null,
+      nx && !pend && o.status === 'preparando' && o.kind === 'entrega' && motoboysCache.length ? saiuBtn(o) : nx && !pend ? h('button', { class: 'btn s', onclick: () => setStatus(o, nx[0]) }, nx[1]) : null,
       pend ? null : h('button', { class: 'btn g s', onclick: () => printOrder(o.id) }, '🖨 Imprimir'),
       h('a', { class: 'btn g s', style: 'text-decoration:none', target: '_blank', rel: 'noopener noreferrer', href: 'https://wa.me/55' + o.phone.replace(/\D/g, '').replace(/^55/, '') }, 'WhatsApp'),
+      avisaCliente(o),
       ['novo', 'preparando'].includes(o.status) ? h('button', { class: 'btn r s', onclick: () => confirm('Cancelar este pedido?') && setStatus(o, 'cancelado') }, 'Cancelar') : null));
 }
 async function setStatus(o, s) {

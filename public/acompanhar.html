@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acompanhar pedido · Pedeaí</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root { --bg:#f5f4f7; --card:#ffffff; --txt:#1d1b22; --muted:#6c6876; --brand:#6b3a8f; --line:#e4e1ea; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121116; --card:#1f1d26; --txt:#f2f0f6; --muted:#a6a2b2; --brand:#a77bd1; --line:#2e2b38; } }
+  :root[data-theme="dark"] { --bg:#121116; --card:#1f1d26; --txt:#f2f0f6; --muted:#a6a2b2; --brand:#a77bd1; --line:#2e2b38; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,Arial,sans-serif; padding:16px 16px 40px; }
+  h1 { font-size:20px; margin:4px 0 2px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0; }
+  .passos { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+  .passo { flex:1 1 auto; text-align:center; font-size:13px; padding:8px 6px; border-radius:8px; border:1px solid var(--line); color:var(--muted); }
+  .passo.feito { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
+  #mapa { display:none; height:320px; border-radius:12px; margin-top:12px; }
+  #info { font-size:16px; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="muted" id="loja"></div>
+<h1 id="cod">Carregando...</h1>
+<div class="passos" id="passos"></div>
+<div class="card"><div id="info" class="muted">Buscando seu pedido...</div></div>
+<div id="mapa"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+  const token = location.pathname.split('/').pop();
+  const LBL = { novo: 'Recebido', preparando: 'Preparando', saiu: 'Saiu para entrega', entregue: 'Entregue' };
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const horaBR = iso => new Date(String(iso).replace(' ', 'T') + 'Z').toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  let mapa = null, marca = null;
+
+  function passos(st) {
+    const ordem = ['novo', 'preparando', 'saiu', 'entregue'];
+    const i = ordem.indexOf(st);
+    return ordem.map((k, j) => `<div class="passo ${j <= i ? 'feito' : ''}">${LBL[k]}</div>`).join('');
+  }
+
+  async function atualiza() {
+    try {
+      const r = await fetch('/api/track/' + token);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { $('info').textContent = j.error || 'Pedido não encontrado.'; return; }
+      $('loja').textContent = j.store;
+      $('cod').textContent = 'Pedido #' + j.code;
+      $('passos').innerHTML = j.status === 'cancelado' ? '<div class="passo feito">Cancelado</div>' : passos(j.status);
+      const d = j.driver;
+      if (d && d.lat != null) {
+        $('mapa').style.display = 'block';
+        if (!mapa) {
+          mapa = L.map('mapa').setView([d.lat, d.lng], 16);
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
+          marca = L.marker([d.lat, d.lng]).addTo(mapa);
+        }
+        marca.setLatLng([d.lat, d.lng]);
+        mapa.panTo([d.lat, d.lng]);
+        $('info').textContent = esc(d.name) + ' está levando seu pedido. Última atualização às ' + horaBR(d.pos_at) + '.';
+      } else {
+        $('info').textContent = j.status === 'entregue' ? 'Pedido entregue. Obrigado!'
+          : j.status === 'saiu' ? 'Aguardando o motoboy enviar a localização...'
+          : 'Seu pedido ainda não saiu para entrega.';
+      }
+    } catch { $('info').textContent = 'Sem conexão. Tentando de novo...'; }
+  }
+
+  atualiza();
+  setInterval(atualiza, 10000);
+</script>
+</body>
+</html>

@@ -329,3 +329,61 @@ async function comprimirFoto(file) {
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.82);
 }
+
+// ---------- Entregadores (motoboys) ----------
+let motoboysCache = [];
+async function carregaMotoboys() { try { motoboysCache = await api('/motoboys'); } catch { motoboysCache = []; } }
+const horaBR = iso => iso ? new Date(String(iso).replace(' ', 'T') + 'Z').toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }) : '';
+const linkEntregador = m => location.origin + '/entregador/' + m.token;
+function saiuBtn(o) {
+  const sel = h('select', { style: 'max-width:170px' }, h('option', { value: '' }, 'Escolha o motoboy'),
+    motoboysCache.map(m => h('option', { value: String(m.id), selected: m.id === o.driver_id }, m.name)));
+  return h('span', { style: 'display:inline-flex;gap:6px;flex-wrap:wrap' }, sel, h('button', { class: 'btn s', onclick: async () => {
+    const id = Number(sel.value);
+    if (!id) return alert('Escolha o motoboy antes de marcar como saiu.');
+    try { await api(`/orders/${o.id}/entregador`, 'PUT', { driver_id: id }); await setStatus(o, 'saiu'); } catch (e) { alert(e.message); }
+  } }, 'Saiu para entrega'));
+}
+function avisaCliente(o) {
+  if (!o.track_token || o.status !== 'saiu') return null;
+  const txt = `Olá! Seu pedido #${o.code} saiu para entrega. Acompanhe ao vivo: ${location.origin}/acompanhar/${o.track_token}`;
+  return h('a', { class: 'btn g s', style: 'text-decoration:none', target: '_blank', rel: 'noopener noreferrer', href: 'https://wa.me/55' + o.phone.replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent(txt) }, 'Avisar cliente no WhatsApp');
+}
+function viewDrivers() {
+  const v = $('view'); if (!v) return;
+  const nome = h('input', { id: 'mb_nome', placeholder: 'Nome do motoboy', maxlength: 60 });
+  const fone = h('input', { id: 'mb_fone', placeholder: 'WhatsApp com DDD', maxlength: 30 });
+  put(v,
+    h('div', { class: 'card' }, h('h2', { style: 'font-size:17px;margin-top:0' }, 'Novo motoboy'),
+      h('div', { class: 'grid' }, nome, fone),
+      h('button', { class: 'btn', style: 'margin-top:10px', onclick: async () => {
+        try { await api('/motoboys', 'POST', { name: nome.value, phone: fone.value }); await carregaMotoboys(); viewDrivers(); } catch (e) { alert(e.message); }
+      } }, 'Cadastrar motoboy'),
+      h('p', { class: 'muted' }, 'Depois de cadastrar, envie o link dele pelo WhatsApp. O link é só dele e vale até você remover o motoboy.')),
+    h('h2', { style: 'font-size:17px' }, 'Seus motoboys (' + motoboysCache.length + ')'),
+    motoboysCache.length ? motoboysCache.map(m => h('div', { class: 'card' },
+      h('h3', {}, h('span', {}, m.name), h('span', { class: 'tag' }, m.pos_at ? 'Sinal às ' + horaBR(m.pos_at) : 'Sem sinal ainda')),
+      h('div', { class: 'muted' }, m.phone || 'sem telefone cadastrado'),
+      h('div', {}, 'Entregas em andamento: ' + m.pedidos.length),
+      m.pedidos.map(o => h('div', { class: 'muted' }, '#' + o.code + ' · ' + o.customer_name + ' · ' + o.address)),
+      h('div', { class: 'acts' },
+        h('button', { class: 'btn g s', onclick: async () => { try { await navigator.clipboard.writeText(linkEntregador(m)); alert('Link copiado!'); } catch { prompt('Copie o link:', linkEntregador(m)); } } }, 'Copiar link'),
+        m.phone ? h('a', { class: 'btn s', style: 'text-decoration:none', target: '_blank', rel: 'noopener noreferrer', href: 'https://wa.me/55' + m.phone.replace(/\D/g, '').replace(/^55/, '') + '?text=' + encodeURIComponent('Seu link de entregas: ' + linkEntregador(m)) }, 'Enviar no WhatsApp') : null,
+        h('button', { class: 'btn r s', onclick: async () => { if (!confirm('Remover este motoboy?')) return; try { await api('/motoboys/' + m.id, 'DELETE'); await carregaMotoboys(); viewDrivers(); } catch (e) { alert(e.message); } } }, 'Remover'))
+    )) : h('p', { class: 'muted' }, 'Nenhum motoboy cadastrado ainda.'),
+    h('h2', { style: 'font-size:17px' }, 'Mapa ao vivo'),
+    h('div', { class: 'card' }, h('div', { id: 'mapaMotoboys', style: 'height:320px;border-radius:10px' })));
+  desenhaMapa();
+}
+let mapaMB = null;
+function desenhaMapa() {
+  const el = document.getElementById('mapaMotoboys'); if (!el || !window.L) return;
+  if (mapaMB) { mapaMB.remove(); mapaMB = null; }
+  const comPos = motoboysCache.filter(m => m.lat != null);
+  if (!comPos.length) { el.replaceChildren(h('p', { class: 'muted', style: 'padding:12px' }, 'Os motoboys aparecem aqui quando começarem a enviar a localização.')); return; }
+  mapaMB = L.map(el);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapaMB);
+  const pts = comPos.map(m => { L.marker([m.lat, m.lng]).bindPopup(m.name + (m.pos_at ? ' · ' + horaBR(m.pos_at) : '')).addTo(mapaMB); return [m.lat, m.lng]; });
+  mapaMB.fitBounds(pts, { padding: [30, 30], maxZoom: 16 });
+}
+setInterval(async () => { if (tab === 'entregadores') { await carregaMotoboys(); desenhaMapa(); } }, 15000);

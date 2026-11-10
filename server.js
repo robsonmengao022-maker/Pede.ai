@@ -55,6 +55,29 @@ async function api(req, res, url) {
   let g;
 
   // ----- público -----
+  // ----- entregador e acompanhamento (links secretos) -----
+  if ((g = p.match(/^\/api\/driver\/([a-f0-9]{24})$/)) && m === 'GET') {
+    const mb = db.prepare('SELECT m.id,m.name,s.name AS store FROM motoboys m JOIN stores s ON s.id=m.store_id WHERE m.token=?').get(g[1]);
+    if (!mb) return fail(res, 404, 'Link inválido');
+    const pedidos = db.prepare("SELECT code,customer_name,phone,address,notes,items_json,total,payment_method,change_for FROM orders WHERE driver_id=? AND status='saiu' ORDER BY id")
+      .all(mb.id).map(o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined }));
+    return json(res, 200, { name: mb.name, store: mb.store, pedidos });
+  }
+  if ((g = p.match(/^\/api\/driver\/([a-f0-9]{24})\/pos$/)) && m === 'POST') {
+    const b = await readBody(req);
+    const lat = Number(b.lat), lng = Number(b.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return fail(res, 400, 'Posição inválida');
+    const r = db.prepare("UPDATE motoboys SET lat=?, lng=?, pos_at=datetime('now') WHERE token=?").run(lat, lng, g[1]);
+    if (!r.changes) return fail(res, 404, 'Link inválido');
+    return json(res, 200, { ok: true });
+  }
+  if ((g = p.match(/^\/api\/track\/([a-f0-9]{24})$/)) && m === 'GET') {
+    const o = db.prepare('SELECT o.code,o.status,o.kind,o.driver_id,s.name AS store FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.track_token=?').get(g[1]);
+    if (!o) return fail(res, 404, 'Pedido não encontrado');
+    const mb = o.driver_id ? db.prepare('SELECT name,lat,lng,pos_at FROM motoboys WHERE id=?').get(o.driver_id) : null;
+    return json(res, 200, { code: o.code, status: o.status, kind: o.kind, store: o.store,
+      driver: mb && o.status === 'saiu' ? { name: mb.name, lat: mb.lat, lng: mb.lng, pos_at: mb.pos_at } : null });
+  }
   if ((g = p.match(/^\/api\/public\/([a-z0-9-]+)$/)) && m === 'GET') {
     const s = db.prepare('SELECT * FROM stores WHERE slug=?').get(g[1]);
     if (!s) return fail(res, 404, 'Loja não encontrada');
@@ -408,6 +431,36 @@ async function api(req, res, url) {
     db.prepare('UPDATE orders SET status=? WHERE id=? AND store_id=?').run(st, g[1], store.id);
     return json(res, 200, { ok: true });
   }
+  // ----- entregadores (painel da loja) -----
+  if (p === '/api/motoboys' && m === 'GET') {
+    const lista = db.prepare('SELECT id,name,phone,token,lat,lng,pos_at FROM motoboys WHERE store_id=? ORDER BY id').all(store.id);
+    const ativos = db.prepare("SELECT code,customer_name,address,driver_id FROM orders WHERE store_id=? AND status='saiu' AND driver_id>0").all(store.id);
+    return json(res, 200, lista.map(x => ({ ...x, pedidos: ativos.filter(o => o.driver_id === x.id) })));
+  }
+  if (p === '/api/motoboys' && m === 'POST') {
+    const b = await readBody(req);
+    const name = str(b.name, 60), phone = str(b.phone, 30).replace(/[^\d+() -]/g, '');
+    if (!name) return fail(res, 400, 'Informe o nome do motoboy.');
+    if (db.prepare('SELECT COUNT(*) n FROM motoboys WHERE store_id=?').get(store.id).n >= 30) return fail(res, 400, 'Limite de 30 motoboys por loja.');
+    const token = crypto.randomBytes(12).toString('hex');
+    db.prepare('INSERT INTO motoboys(store_id,name,phone,token) VALUES(?,?,?,?)').run(store.id, name, phone, token);
+    return json(res, 201, { ok: true, token });
+  }
+  if ((g = p.match(/^\/api\/motoboys\/(\d+)$/)) && m === 'DELETE') {
+    db.prepare('DELETE FROM motoboys WHERE id=? AND store_id=?').run(g[1], store.id);
+    db.prepare("UPDATE orders SET driver_id=0 WHERE driver_id=? AND store_id=? AND status!='entregue'").run(g[1], store.id);
+    return json(res, 200, { ok: true });
+  }
+  if ((g = p.match(/^\/api\/orders\/(\d+)\/entregador$/)) && m === 'PUT') {
+    const b = await readBody(req);
+    const id = Number(b.driver_id) || 0;
+    if (id && !db.prepare('SELECT 1 FROM motoboys WHERE id=? AND store_id=?').get(id, store.id)) return fail(res, 400, 'Motoboy não encontrado.');
+    const ord = db.prepare('SELECT id,track_token FROM orders WHERE id=? AND store_id=?').get(g[1], store.id);
+    if (!ord) return fail(res, 404, 'Pedido não encontrado');
+    const track = ord.track_token || crypto.randomBytes(12).toString('hex');
+    db.prepare('UPDATE orders SET driver_id=?, track_token=? WHERE id=?').run(id, track, ord.id);
+    return json(res, 200, { ok: true, track });
+  }
   if (p === '/api/coupons' && m === 'GET') return json(res, 200, db.prepare('SELECT * FROM coupons WHERE store_id=? ORDER BY id DESC').all(store.id));
   if (p === '/api/coupons' && m === 'POST') {
     const b = await readBody(req);
@@ -464,6 +517,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/painel') return send(res, 200, page('painel.html'), HTML);
     if (p === '/admin') return send(res, 200, page('admin.html'), HTML);
     if (/^\/(painel|painel2|loja)\.js$/.test(p)) return send(res, 200, page(p.slice(1)), { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+    if (/^\/(entregador|acompanhar)\/[a-f0-9]{24}$/.test(p)) return send(res, 200, page(p.split('/')[1] + '.html'), HTML);
     if (p === '/health') return send(res, 200, 'ok');
     let g;
     if ((g = p.match(/^\/recibo\/(\d+)$/))) {
