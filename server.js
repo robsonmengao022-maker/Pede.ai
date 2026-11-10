@@ -502,5 +502,6 @@ async function conferePixPendentes() {
   }
 }
 setInterval(() => conferePixPendentes().catch(() => {}), Number(process.env.PIX_CONFERE_MS) || 5e3).unref();
+require('./fechamento').agendaFechamento({ db, sendMail });
 
 server.listen(PORT, () => console.log(`Pedeaí rodando em http://localhost:${PORT}`));
