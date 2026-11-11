@@ -25,6 +25,7 @@ async function tokenMP(s) {
   } catch (e) { console.error('Mercado Pago (token da loja):', e.message); return null; }
 }
 const { sendMail, mailReady } = require('./mail');
+const { enviaBackup } = require('./backup');
 
 const codeHash = code => crypto.createHash('sha256').update('pedeai-reset:' + code).digest('hex');
 
@@ -240,6 +241,21 @@ async function api(req, res, url) {
     return json(res, 200, { media: media.a ? Math.round(media.a * 10) / 10 : 0, total: media.n, lista });
   }
 
+  // ----- backup (admin da plataforma) -----
+  if ((p === '/api/admin/backup' || p === '/api/admin/restore') && m === 'POST') {
+    if (limited(req, 'backup', 10, 600e3)) return fail(res, 429, 'Muitas tentativas.');
+    const a = Buffer.from(String(req.headers['x-admin-password'] || '')), b = Buffer.from(ADMIN_PASSWORD);
+    if (!ADMIN_PASSWORD || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return fail(res, 401, 'Senha incorreta');
+    if (p === '/api/admin/backup') {
+      try { const r = await enviaBackup({ db, sendMail, dataDir: DATA_DIR }); return json(res, 200, { ok: true, ...r }); }
+      catch (e) { return fail(res, 400, e.message); }
+    }
+    const body = await readBody(req, 40e6);
+    const buf = Buffer.from(String(body.data || ''), 'base64');
+    if (buf.length < 100 || buf.subarray(0, 15).toString() !== 'SQLite format 3') return fail(res, 400, 'Arquivo inválido. Envie um backup .db do Pedeaí.');
+    fs.writeFileSync(path.join(DATA_DIR, 'restore.db'), buf);
+    return json(res, 200, { ok: true, msg: 'Backup recebido. Reinicie o serviço no Render (Manual Deploy > Restart) para restaurar.' });
+  }
   // ----- admin da plataforma -----
   if (p === '/api/admin/stores' && m === 'GET') {
     const pw = req.headers['x-admin-password'] || '';
@@ -564,5 +580,6 @@ async function conferePixPendentes() {
 }
 setInterval(() => conferePixPendentes().catch(() => {}), Number(process.env.PIX_CONFERE_MS) || 5e3).unref();
 require('./fechamento').agendaFechamento({ db, sendMail });
+require('./backup').agendaBackup({ db, sendMail, dataDir: DATA_DIR });
 
 server.listen(PORT, () => console.log(`Pedeaí rodando em http://localhost:${PORT}`));

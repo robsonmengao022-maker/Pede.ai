@@ -12,6 +12,15 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const PUBLIC = path.join(__dirname, 'public');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+// Restauração de backup: se o admin enviou um restore.db, ele substitui o banco na próxima inicialização
+{
+  const dbFile = path.join(DATA_DIR, 'pedeai.db'), restFile = path.join(DATA_DIR, 'restore.db');
+  if (fs.existsSync(restFile)) {
+    const t = Date.now();
+    for (const suf of ['', '-wal', '-shm']) if (fs.existsSync(dbFile + suf)) fs.renameSync(dbFile + suf, path.join(DATA_DIR, `pedeai-antes-restauracao-${t}.db${suf}`));
+    fs.renameSync(restFile, dbFile);
+  }
+}
 const db = new DatabaseSync(path.join(DATA_DIR, 'pedeai.db'));
 db.exec(`
 PRAGMA journal_mode = WAL;

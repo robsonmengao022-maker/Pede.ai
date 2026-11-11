@@ -16,6 +16,14 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <h1>Admin da Pedeaí</h1>
 <div><input id="pw" type="password" placeholder="Senha de administrador"> <button id="go">Entrar</button> <span id="err" style="color:#b3261e"></span></div>
 <div id="out"></div>
+<div id="bkp" style="margin-top:24px;border-top:1px solid #ddd;padding-top:14px">
+  <h2 style="font-size:18px">Backup do banco</h2>
+  <p style="color:#555;font-size:14px">Todo dia às 04:00 o backup é enviado para o e-mail configurado em BACKUP_EMAIL. Use o botão abaixo para enviar agora, por exemplo antes de uma manutenção.</p>
+  <button id="bkpAgora">Enviar backup agora</button> <span id="bkpMsg" style="font-size:14px"></span>
+  <h3 style="font-size:16px;margin-top:18px">Restaurar backup</h3>
+  <p style="color:#555;font-size:14px">Envie um arquivo .db de backup. Depois, reinicie o serviço no Render para a restauração valer. Os dados atuais ficam guardados como segurança.</p>
+  <input type="file" id="bkpArq" accept=".db"> <button id="restaura">Restaurar</button> <span id="restMsg" style="font-size:14px"></span>
+</div>
 </div>
 <script>
 const brl = n => 'R$ ' + Number(n).toFixed(2).replace('.', ',');
@@ -33,6 +41,23 @@ document.getElementById('go').onclick = async () => {
   const tb = t.createTBody();
   j.stores.forEach(s => { const tr = tb.insertRow(); tr.append(cell(s.name), cell('/' + s.slug), cell(s.email), cell(s.whatsapp), cell(s.orders, 'n'), cell(brl(s.revenue), 'n'), cell(brl(s.fee), 'n')); });
   out.append(k, t);
+};
+const senha = () => document.getElementById('pw').value;
+document.getElementById('bkpAgora').onclick = async () => {
+  const m = document.getElementById('bkpMsg'); m.textContent = 'Enviando...';
+  const r = await fetch('/api/admin/backup', { method: 'POST', headers: { 'x-admin-password': senha() } });
+  const j = await r.json().catch(() => ({}));
+  m.textContent = r.ok ? 'Backup enviado para o e-mail. Lojas: ' + j.lojas + ' · Pedidos: ' + j.pedidos : (j.error || 'Erro ao enviar.');
+};
+document.getElementById('restaura').onclick = async () => {
+  const m = document.getElementById('restMsg'), f = document.getElementById('bkpArq').files[0];
+  if (!f) { m.textContent = 'Escolha o arquivo primeiro.'; return; }
+  if (!confirm('Isso vai substituir os dados atuais na próxima reinicialização. Continuar?')) return;
+  m.textContent = 'Enviando...';
+  const b64 = await new Promise((ok, bad) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result).split(',')[1]); rd.onerror = bad; rd.readAsDataURL(f); });
+  const r = await fetch('/api/admin/restore', { method: 'POST', headers: { 'x-admin-password': senha(), 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b64 }) });
+  const j = await r.json().catch(() => ({}));
+  m.textContent = r.ok ? j.msg : (j.error || 'Erro ao restaurar.');
 };
 </script>
 </body>
