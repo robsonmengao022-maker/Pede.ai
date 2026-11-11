@@ -209,13 +209,70 @@ function mpBloco() {
 }
 function comandaFoto(campo, st) {
   return e => {
-    const f = e.target.files[0]; if (!f) return;
-    $(st).textContent = 'Enviando...';
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    // logo quadrada (1:1); capa larga, como aparece na página da loja (2:1)
+    const proporcao = campo === 's_logo' ? 1 : 2;
     (async () => {
-      try { const r = await api('/upload', 'POST', { data: await comprimirFoto(f) }); $(campo).value = r.url; $(st).textContent = 'Enviada. Clique em Salvar configurações.'; }
+      const data = await recortarFoto(f, proporcao);
+      if (!data) return;
+      $(st).textContent = 'Enviando...';
+      try { const r = await api('/upload', 'POST', { data }); $(campo).value = r.url; $(st).textContent = 'Enviada. Clique em Salvar configurações.'; }
       catch (err) { $(st).textContent = err.message || 'Não consegui enviar.'; }
     })();
   };
+}
+
+// Mostra a foto numa moldura com a proporção certa: o lojista arrasta e dá zoom até ficar do jeito que quer.
+// Resolve com a imagem recortada (JPEG em data URL) ou null se cancelar.
+function recortarFoto(file, proporcao) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui abrir essa imagem.')); };
+    img.onload = () => {
+      const largura = Math.min(window.innerWidth - 48, 380);
+      const altura = Math.round(largura / proporcao);
+      const base = Math.max(largura / img.width, altura / img.height); // escala mínima que cobre a moldura
+      let zoom = 1, x = 0, y = 0;
+      const pos = () => {
+        const esc = base * zoom;
+        const w = img.width * esc, hh = img.height * esc;
+        x = Math.min(0, Math.max(largura - w, x));
+        y = Math.min(0, Math.max(altura - hh, y));
+        pre.style.width = w + 'px'; pre.style.height = hh + 'px';
+        pre.style.left = x + 'px'; pre.style.top = y + 'px';
+      };
+      const pre = h('img', { src: url, alt: '', draggable: false, style: 'position:absolute;user-select:none;pointer-events:none;max-width:none' });
+      const moldura = h('div', { style: `position:relative;overflow:hidden;width:${largura}px;height:${altura}px;background:#222;border-radius:12px;touch-action:none;cursor:grab` }, pre);
+      const zoomIn = h('input', { type: 'range', min: '1', max: '3', step: '0.01', value: '1', style: 'width:100%', oninput: e => { zoom = Number(e.target.value); pos(); } });
+      const fecha = v => { URL.revokeObjectURL(url); overlay.remove(); resolve(v); };
+      const overlay = h('div', { style: 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px' },
+        h('div', { style: 'background:#fff;color:#111;border-radius:14px;padding:16px;max-width:420px;width:100%;box-sizing:border-box' },
+          h('div', { style: 'font-weight:700;margin-bottom:4px' }, 'Ajustar foto'),
+          h('div', { class: 'muted', style: 'font-size:13px;margin-bottom:10px' }, 'Arraste a foto para posicionar. Use a barra para dar zoom.'),
+          moldura,
+          h('div', { style: 'margin:12px 0 4px;font-size:13px' }, 'Zoom'), zoomIn,
+          h('div', { style: 'display:flex;gap:8px;justify-content:flex-end;margin-top:14px' },
+            h('button', { class: 'btn g s', onclick: () => fecha(null) }, 'Cancelar'),
+            h('button', { class: 'btn s', onclick: () => {
+              const saida = document.createElement('canvas');
+              const W = proporcao >= 1 ? 1000 : 600, H = Math.round(W / proporcao);
+              saida.width = W; saida.height = H;
+              const esc = base * zoom;
+              saida.getContext('2d').drawImage(img, -x / esc, -y / esc, largura / esc, altura / esc, 0, 0, W, H);
+              fecha(saida.toDataURL('image/jpeg', 0.85));
+            } }, 'Usar esta foto'))));
+      document.body.appendChild(overlay);
+      // arrastar com o dedo ou mouse
+      let arrastando = null;
+      moldura.addEventListener('pointerdown', e => { arrastando = { px: e.clientX, py: e.clientY, x0: x, y0: y }; moldura.setPointerCapture(e.pointerId); moldura.style.cursor = 'grabbing'; });
+      moldura.addEventListener('pointermove', e => { if (!arrastando) return; x = arrastando.x0 + (e.clientX - arrastando.px); y = arrastando.y0 + (e.clientY - arrastando.py); pos(); });
+      moldura.addEventListener('pointerup', () => { arrastando = null; moldura.style.cursor = 'grab'; });
+      moldura.addEventListener('pointercancel', () => { arrastando = null; });
+      pos();
+    };
+    img.src = url;
+  });
 }
 function campoImagem(campo, rotulo, atual) {
   return h('div', {}, h('label', {}, rotulo),
