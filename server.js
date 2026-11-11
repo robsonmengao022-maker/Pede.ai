@@ -188,6 +188,8 @@ async function api(req, res, url) {
       try {
         const pay = await buscarPagamento(tk, id);
         db.prepare('UPDATE orders SET mp_status=? WHERE mp_payment_id=?').run(pay.status, pay.id);
+        // Pix pago: aceita o pedido automaticamente (a comanda sai na impressora)
+        if (pay.status === 'approved') db.prepare("UPDATE orders SET status='preparando' WHERE mp_payment_id=? AND status='novo'").run(pay.id);
         const o = db.prepare('SELECT * FROM orders WHERE mp_payment_id=?').get(pay.id);
         if (o) broadcast(o.store_id, 'order', orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(o.id)));
       } catch (e) { console.error('Mercado Pago (webhook):', e.message); }
@@ -552,6 +554,8 @@ async function conferePixPendentes() {
       const pay = await buscarPagamento(tk, o.mp_payment_id);
       if (pay.status && pay.status !== o.mp_status) {
         db.prepare('UPDATE orders SET mp_status=? WHERE id=?').run(pay.status, o.id);
+        // Pix pago: aceita o pedido automaticamente (a comanda sai na impressora)
+        if (pay.status === 'approved') db.prepare("UPDATE orders SET status='preparando' WHERE id=? AND status='novo'").run(o.id);
         broadcast(o.store_id, 'order', orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(o.id)));
       }
     } catch (e) { console.error('Mercado Pago (conferência):', e.message); }
