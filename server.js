@@ -583,3 +583,10 @@ require('./fechamento').agendaFechamento({ db, sendMail });
 require('./backup').agendaBackup({ db, sendMail, dataDir: DATA_DIR });
 
 server.listen(PORT, () => console.log(`Pedeaí rodando em http://localhost:${PORT}`));
+
+// Mantém o site acordado no plano gratuito do Render: acessa o próprio endereço a cada 5 minutos.
+// Desligue com KEEP_ALIVE=off.
+if (process.env.KEEP_ALIVE !== 'off') {
+  const alvo = (process.env.PUBLIC_URL || 'https://pedeaiapp.online').replace(/\/$/, '') + '/';
+  setInterval(() => fetch(alvo, { signal: AbortSignal.timeout(20000) }).catch(() => {}), 5 * 60e3).unref();
+}
