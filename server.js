@@ -147,6 +147,8 @@ async function api(req, res, url) {
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(s.id, code, name, phone, kind, kind === 'entrega' ? address : '', (taxaACalcular ? '[TAXA A CONFIRMAR: endereço não localizado no mapa] ' : '') + str(b.notes, 250), method,
       method === 'dinheiro' ? str(b.change_for, 20) : '', JSON.stringify(items), subtotal, fee, total, discount, couponCode);
     if (couponId) db.prepare('UPDATE coupons SET used=used+1 WHERE id=?').run(couponId);
+    // Dinheiro e maquininha: já nascem aceitos (comanda sai na impressão). Pix aceita quando o pagamento for aprovado.
+    if (method === 'dinheiro' || method === 'cartao_entrega') db.prepare("UPDATE orders SET status='preparando' WHERE id=?").run(r.lastInsertRowid);
     const order = orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(r.lastInsertRowid));
     broadcast(s.id, 'order', order);
     let mpPix = '';
