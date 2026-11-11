@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        const val HOST = "pede-ai-9aun.onrender.com"
+        const val HOST = "pedeaiapp.online"
         const val SITE = "https://$HOST/painel"
     }
 }
