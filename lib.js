@@ -38,11 +38,9 @@ CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id, created_at);
 `);
 
 // ---------- Faixas de cobrança da plataforma (por faturamento mensal da loja) ----------
-const FEE_TIERS = { freeUpTo: 7000, midUpTo: 10000, midFee: 69.9, topFee: 129.9 };
+const FEE_TIERS = { minRevenue: 3000, fee: 49.9 };
 function monthlyFee(revenue) {
-  if (revenue > FEE_TIERS.midUpTo) return FEE_TIERS.topFee;
-  if (revenue > FEE_TIERS.freeUpTo) return FEE_TIERS.midFee;
-  return 0;
+  return Math.round(Number(revenue) * 100) >= FEE_TIERS.minRevenue * 100 ? FEE_TIERS.fee : 0;
 }
 const monthKey = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 7); // horário de Brasília
 function monthRevenue(storeId) {

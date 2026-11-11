@@ -363,7 +363,7 @@ function viewConfig() {
 // ---------- Mensalidade ----------
 async function viewBilling() {
   const b = await api('/billing'); const v = $('view'); if (!v) return;
-  const t = b.tiers, pct = Math.min(100, b.revenue / t.midUpTo * 100);
+  const t = b.tiers, pct = Math.min(100, b.revenue / t.minRevenue * 100);
   put(v, h('div', { class: 'card' },
     h('div', { class: 'muted' }, 'Vendas deste mês (' + b.month + ')'), h('div', { style: 'font-size:28px;font-weight:700' }, brl(b.revenue)),
     h('div', { class: 'muted' }, b.orders + ' pedidos (cancelados não contam)'),
@@ -371,9 +371,8 @@ async function viewBilling() {
     h('div', {}, 'Mensalidade do mês: ', h('b', {}, b.fee ? brl(b.fee) : 'R$ 0,00 — grátis 🎉')),
     b.next ? h('p', { class: 'muted' }, 'Se passar de ' + brl(b.next.at) + ' em vendas, a mensalidade vai para ' + brl(b.next.fee) + '.') : null),
     h('div', { class: 'card' }, h('b', {}, 'Como funciona'),
-      h('div', { class: 'tier' + (b.fee === 0 ? ' cur' : '') }, h('span', {}, 'Até ' + brl(t.freeUpTo) + ' em vendas no mês'), h('span', {}, 'Grátis')),
-      h('div', { class: 'tier' + (b.fee === t.midFee ? ' cur' : '') }, h('span', {}, 'De ' + brl(t.freeUpTo) + ' a ' + brl(t.midUpTo)), h('span', {}, brl(t.midFee))),
-      h('div', { class: 'tier' + (b.fee === t.topFee ? ' cur' : '') }, h('span', {}, 'Acima de ' + brl(t.midUpTo)), h('span', {}, brl(t.topFee)))));
+      h('div', { class: 'tier' + (b.fee === 0 ? ' cur' : '') }, h('span', {}, 'Até ' + brl(t.minRevenue - 0.01) + ' em vendas no mês'), h('span', {}, 'Grátis')),
+      h('div', { class: 'tier' + (b.fee === t.fee ? ' cur' : '') }, h('span', {}, 'A partir de ' + brl(t.minRevenue) + ' em vendas no mês'), h('span', {}, brl(t.fee)))));
 }
 start();
 

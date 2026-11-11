@@ -10,7 +10,7 @@ Site de pedidos para várias lojas. Cada loja tem seu endereço (`seusite.com.br
 - Cada loja liga e desliga: **Pix**, **dinheiro**, **cartão na maquininha** e **link de pagamento** (cartão online)
 - Pix "copia e cola" com o valor exato do pedido, gerado com a chave Pix da própria loja
 - Painel em tempo real com som de aviso e **impressão automática** (térmica 80mm)
-- Mensalidade por faixa de vendas do mês: até R$ 7.000 grátis · R$ 7.000–10.000 = R$ 69,90 · acima de R$ 10.000 = R$ 129,90 (pedidos cancelados não contam)
+- Mensalidade por vendas do mês: abaixo de R$ 3.000 é grátis · a partir de R$ 3.000 (inclusive) é R$ 49,90 fixos, não importa o valor vendido · zera todo dia 1º (pedidos cancelados não contam)
 - Painel `/admin` para você ver todas as lojas, vendas e quanto cada uma deve
 
 ## Limitações atuais (seja honesto com seus lojistas)

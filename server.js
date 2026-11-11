@@ -489,8 +489,7 @@ async function api(req, res, url) {
     const r = monthRevenue(store.id);
     const fee = monthlyFee(r.revenue);
     let next = null;
-    if (r.revenue <= FEE_TIERS.freeUpTo) next = { at: FEE_TIERS.freeUpTo, fee: FEE_TIERS.midFee };
-    else if (r.revenue <= FEE_TIERS.midUpTo) next = { at: FEE_TIERS.midUpTo, fee: FEE_TIERS.topFee };
+    if (r.revenue < FEE_TIERS.minRevenue) next = { at: FEE_TIERS.minRevenue, fee: FEE_TIERS.fee };
     return json(res, 200, { month: monthKey(), ...r, fee, tiers: FEE_TIERS, next });
   }
   if (p === '/api/events' && m === 'GET') {
