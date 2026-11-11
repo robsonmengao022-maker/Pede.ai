@@ -271,7 +271,7 @@ function checkout(keep) {
   }
   refreshTotals = totals;
   totals();
-  if (quote && $('qmsg')) $('qmsg').textContent = `Distância: ${quote.km} km`;
+  if (quote && $('qmsg')) $('qmsg').textContent = quote.aCalcular ? quote.aviso : `Distância: ${quote.km} km`;
   if (cupom && $('cmsg')) $('cmsg').textContent = `Cupom ${cupom.code} aplicado.`;
   ['f_cep', 'f_rua', 'f_num', 'f_comp', 'f_bairro', 'f_cid'].forEach(id => $(id).addEventListener('input', () => { quote = null; totals(); }));
   $('f_cep').addEventListener('blur', buscaCepCliente);
@@ -341,6 +341,7 @@ async function quoteAddr() {
     const r = await fetch(`/api/public/${slug}/quote?address=${encodeURIComponent(a)}`);
     const j = await r.json();
     if (j.error) $('err').textContent = j.error;
+    else if (j.aCalcular) { quote = j; $('qmsg').textContent = j.aviso; }
     else { quote = j; $('qmsg').textContent = `Distância: ${j.km} km`; }
   } catch { $('err').textContent = 'Sem conexão para calcular a entrega.'; }
   if (!quote) $('qmsg').textContent = '';

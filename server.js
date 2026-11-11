@@ -38,7 +38,8 @@ async function quoteDelivery(store, address) {
   if (store.lat == null || store.lng == null) return { error: 'A loja ainda não tem o endereço localizado no mapa. Peça para o lojista salvar o endereço nas configurações.' };
   const area = [store.city, store.uf].filter(Boolean).join(' - ');
   const point = await geocodeEndereco(address, area);
-  if (!point) return { error: 'Não encontrei esse endereço. Confira rua, número, bairro e cidade.' };
+  // Endereço não localizado no mapa: o pedido segue com a taxa "a calcular", e a loja confirma
+  if (!point) return { km: null, fee: 0, aCalcular: true, aviso: 'Não localizamos esse endereço no mapa. A taxa de entrega será confirmada pela loja.' };
   const km = kmFromPoints({ lat: store.lat, lng: store.lng }, point);
   if (km > MAX_KM) return { error: `Endereço fora da área de entrega (até ${MAX_KM} km).` };
   const maxKm = fees.reduce((last, v, i) => (v !== null ? i + 1 : last), 0);
@@ -128,11 +129,12 @@ async function api(req, res, url) {
       items.push({ name: prod.name, qty, price: unit, obs: str(it.obs, 120), choices: txt.join(' · ') });
     }
     if (subtotal < s.min_order) return fail(res, 400, `Pedido mínimo: R$ ${s.min_order.toFixed(2).replace('.', ',')}`);
-    let fee = 0;
+    let fee = 0, taxaACalcular = false;
     if (kind === 'entrega') {
       const q = await quoteDelivery(s, address);
       if (q.error) return fail(res, 400, q.error);
       fee = q.fee;
+      taxaACalcular = !!q.aCalcular;
     }
     let discount = 0, couponCode = '', couponId = null;
     if (str(b.coupon, 30)) {
@@ -142,7 +144,7 @@ async function api(req, res, url) {
     const total = Math.round((subtotal - discount + fee) * 100) / 100;
     const code = crypto.randomBytes(3).toString('hex').toUpperCase();
     const r = db.prepare(`INSERT INTO orders(store_id,code,customer_name,phone,kind,address,notes,payment_method,change_for,items_json,subtotal,delivery_fee,total,discount,coupon)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(s.id, code, name, phone, kind, kind === 'entrega' ? address : '', str(b.notes, 250), method,
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(s.id, code, name, phone, kind, kind === 'entrega' ? address : '', (taxaACalcular ? '[TAXA A CONFIRMAR: endereço não localizado no mapa] ' : '') + str(b.notes, 250), method,
       method === 'dinheiro' ? str(b.change_for, 20) : '', JSON.stringify(items), subtotal, fee, total, discount, couponCode);
     if (couponId) db.prepare('UPDATE coupons SET used=used+1 WHERE id=?').run(couponId);
     const order = orderOut(db.prepare('SELECT * FROM orders WHERE id=?').get(r.lastInsertRowid));
