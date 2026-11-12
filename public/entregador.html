@@ -55,6 +55,7 @@
           ${p.notes ? '<div class="muted">Obs: ' + esc(p.notes) + '</div>' : ''}
           <div>${esc(PAG[p.payment_method] || p.payment_method)} · <b>${brl(p.total)}</b>${p.payment_method === 'dinheiro' && p.change_for ? ' (troco p/ ' + esc(p.change_for) + ')' : ''}</div>
           <a class="btn sec" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}" target="_blank" rel="noopener">Abrir no mapa</a>
+          ${p.track ? `<a class="btn sec" href="${avisoCliente(p)}" target="_blank" rel="noopener">Avisar cliente</a>` : ''}
         </div>`).join('') : '<p class="muted">Nenhuma entrega no momento.</p>';
     } catch { $('lista').innerHTML = '<p class="muted">Sem internet. Tentando de novo...</p>'; }
   }
@@ -77,6 +78,22 @@
   const marca = v => { try { v ? localStorage.setItem(CHAVE, '1') : localStorage.removeItem(CHAVE); } catch {} };
   let reinicio = null;
 
+  // Mensagem pronta para o cliente, no WhatsApp (ele só toca em enviar)
+  function avisoCliente(p) {
+    let fone = String(p.phone || '').replace(/\D/g, '');
+    if (fone.length <= 11) fone = '55' + fone;
+    const txt = `Olá ${p.customer_name}! Seu pedido #${p.code} saiu para entrega. Acompanhe por aqui: https://pedeaiapp.online/acompanhar/${p.track}`;
+    return 'https://wa.me/' + fone + '?text=' + encodeURIComponent(txt);
+  }
+
+  // Dentro do app Pedeaí Entregador, a localização roda no próprio app (mesmo com o mapa aberto)
+  function androidIniciar() {
+    window.AndroidDriver.iniciar(token);
+    $('btn').textContent = 'Entregas ativas ✓';
+    $('btn').disabled = true;
+    $('sinal').textContent = 'Localização ativa em segundo plano. Veja a notificação "Entregas em andamento".';
+  }
+
   function ligaGps() {
     if (!navigator.geolocation) { $('sinal').textContent = 'Este celular não oferece localização no navegador.'; return; }
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
@@ -94,14 +111,14 @@
     segurarTela();
   }
 
-  function iniciar() { marca(true); ligaGps(); }
+  function iniciar() { marca(true); if (window.AndroidDriver) return androidIniciar(); ligaGps(); }
 
   // Quando o celular volta para esta página (tela ligada de novo, portão, troca de app), religa a localização
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && ativo()) ligaGps();
   });
   $('btn').onclick = iniciar;
-  if (ativo()) { $('sinal').textContent = 'Retomando a localização...'; ligaGps(); }
+  if (ativo()) { if (window.AndroidDriver) androidIniciar(); else { $('sinal').textContent = 'Retomando a localização...'; ligaGps(); } }
   carrega();
   setInterval(carrega, 30000);
 </script>

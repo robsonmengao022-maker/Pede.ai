@@ -61,8 +61,8 @@ async function api(req, res, url) {
   if ((g = p.match(/^\/api\/driver\/([a-f0-9]{24})$/)) && m === 'GET') {
     const mb = db.prepare('SELECT m.id,m.name,s.name AS store FROM motoboys m JOIN stores s ON s.id=m.store_id WHERE m.token=?').get(g[1]);
     if (!mb) return fail(res, 404, 'Link inválido');
-    const pedidos = db.prepare("SELECT code,customer_name,phone,address,notes,items_json,total,payment_method,change_for FROM orders WHERE driver_id=? AND status='saiu' ORDER BY id")
-      .all(mb.id).map(o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined }));
+    const pedidos = db.prepare("SELECT code,customer_name,phone,address,notes,items_json,total,payment_method,change_for,track_token FROM orders WHERE driver_id=? AND status='saiu' ORDER BY id")
+      .all(mb.id).map(o => ({ ...o, items: JSON.parse(o.items_json || '[]'), items_json: undefined, track: o.track_token, track_token: undefined }));
     return json(res, 200, { name: mb.name, store: mb.store, pedidos });
   }
   if ((g = p.match(/^\/api\/driver\/([a-f0-9]{24})\/pos$/)) && m === 'POST') {
