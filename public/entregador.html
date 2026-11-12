@@ -55,7 +55,6 @@
           ${p.notes ? '<div class="muted">Obs: ' + esc(p.notes) + '</div>' : ''}
           <div>${esc(PAG[p.payment_method] || p.payment_method)} · <b>${brl(p.total)}</b>${p.payment_method === 'dinheiro' && p.change_for ? ' (troco p/ ' + esc(p.change_for) + ')' : ''}</div>
           <a class="btn sec" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}" target="_blank" rel="noopener">Abrir no mapa</a>
-          ${p.track ? `<a class="btn sec" href="${avisoCliente(p)}" target="_blank" rel="noopener">Avisar cliente</a>` : ''}
         </div>`).join('') : '<p class="muted">Nenhuma entrega no momento.</p>';
     } catch { $('lista').innerHTML = '<p class="muted">Sem internet. Tentando de novo...</p>'; }
   }
