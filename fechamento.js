@@ -90,21 +90,33 @@ async function fechaCaixa({ db, sendMail }, store, dia) {
 }
 
 // Verifica a cada minuto; às 02:00 (até 02:10) envia o fechamento de cada loja que ainda não recebeu hoje
+// Se o site estava dormindo na hora do fechamento, ele envia quando acordar (hoje e os 2 dias anteriores).
 function agendaFechamento(deps) {
   deps.db.exec('CREATE TABLE IF NOT EXISTS fechamentos(store_id INTEGER, dia TEXT, enviado_em TEXT, PRIMARY KEY(store_id, dia))');
+  let rodando = false;
+  const addDias = (dia, k) => new Date(Date.parse(dia + 'T00:00:00Z') + k * 86400e3).toISOString().slice(0, 10);
   const tick = async () => {
-    const loc = new Date(Date.now() - 3 * 3600e3);
-    if (loc.getUTCHours() !== HORA_FECHAMENTO || loc.getUTCMinutes() > 10) return;
-    const dia = loc.toISOString().slice(0, 10);
-    const lojas = deps.db.prepare('SELECT * FROM stores WHERE id NOT IN (SELECT store_id FROM fechamentos WHERE dia=?)').all(dia);
-    for (const s of lojas) {
-      try {
-        await fechaCaixa(deps, s, dia);
-        deps.db.prepare("INSERT INTO fechamentos(store_id,dia,enviado_em) VALUES(?,?,datetime('now'))").run(s.id, dia);
-      } catch (e) { console.error('Fechamento de caixa:', s.slug, e.message); }
-    }
+    if (rodando) return;
+    rodando = true;
+    try {
+      const agora = new Date(Date.now() - 3 * 3600e3);
+      const hoje = agora.toISOString().slice(0, 10);
+      for (let k = 0; k >= -2; k--) {
+        const dia = addDias(hoje, k);
+        if (k === 0 && agora.getUTCHours() < HORA_FECHAMENTO) continue;
+        const fim = janela(dia).fim; // a loja só entra no fechamento depois de criada
+        const lojas = deps.db.prepare('SELECT * FROM stores WHERE id NOT IN (SELECT store_id FROM fechamentos WHERE dia=?) AND created_at < ?').all(dia, fim);
+        for (const s of lojas) {
+          try {
+            await fechaCaixa(deps, s, dia);
+            deps.db.prepare("INSERT INTO fechamentos(store_id,dia,enviado_em) VALUES(?,?,datetime('now'))").run(s.id, dia);
+          } catch (e) { console.error('Fechamento de caixa:', s.slug, e.message); }
+        }
+      }
+    } finally { rodando = false; }
   };
   setInterval(() => tick().catch(() => {}), 60e3).unref();
+  return () => tick().catch(() => {});
 }
 
 module.exports = { agendaFechamento, fechaCaixa, relatorio, janela };

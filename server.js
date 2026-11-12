@@ -523,6 +523,8 @@ async function api(req, res, url) {
 const page = f => fs.readFileSync(path.join(PUBLIC, f));
 const HTML = { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' };
 const server = http.createServer(async (req, res) => {
+  // Qualquer acesso ao site confere se ficou algum fechamento ou backup pendente (throttle de 10 min)
+  if (Date.now() - ultimaVerificacao > 10 * 60e3) { ultimaVerificacao = Date.now(); verificaFechamento(); verificaBackup(); }
   try {
     const url = new URL(req.url, 'http://x');
     const p = url.pathname;
@@ -579,8 +581,9 @@ async function conferePixPendentes() {
   }
 }
 setInterval(() => conferePixPendentes().catch(() => {}), Number(process.env.PIX_CONFERE_MS) || 5e3).unref();
-require('./fechamento').agendaFechamento({ db, sendMail });
-require('./backup').agendaBackup({ db, sendMail, dataDir: DATA_DIR });
+const verificaFechamento = require('./fechamento').agendaFechamento({ db, sendMail });
+const verificaBackup = require('./backup').agendaBackup({ db, sendMail, dataDir: DATA_DIR });
+let ultimaVerificacao = 0;
 
 server.listen(PORT, () => console.log(`Pedeaí rodando em http://localhost:${PORT}`));
 

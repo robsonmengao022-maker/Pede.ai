@@ -27,19 +27,25 @@ async function enviaBackup({ db, sendMail, dataDir }) {
 }
 
 // Todo dia às 04:00 (Brasília), uma vez por dia. Horário fixo UTC-3, sem horário de verão.
+// Se o site estava dormindo às 04:00, envia quando acordar (uma vez por dia).
 function agendaBackup(deps) {
   deps.db.exec('CREATE TABLE IF NOT EXISTS backups(dia TEXT PRIMARY KEY, enviado_em TEXT)');
+  let rodando = false;
   const tick = async () => {
+    if (rodando) return;
     const loc = new Date(Date.now() - 3 * 3600e3);
-    if (loc.getUTCHours() !== 4 || loc.getUTCMinutes() > 10) return;
+    if (loc.getUTCHours() < 4) return;
     const dia = loc.toISOString().slice(0, 10);
     if (deps.db.prepare('SELECT 1 FROM backups WHERE dia=?').get(dia)) return;
+    rodando = true;
     try {
       await enviaBackup(deps);
       deps.db.prepare("INSERT INTO backups(dia,enviado_em) VALUES(?,datetime('now'))").run(dia);
     } catch (e) { console.error('Backup diário:', e.message); }
+    finally { rodando = false; }
   };
   setInterval(() => tick().catch(() => {}), 60e3).unref();
+  return () => tick().catch(() => {});
 }
 
 module.exports = { enviaBackup, agendaBackup };
