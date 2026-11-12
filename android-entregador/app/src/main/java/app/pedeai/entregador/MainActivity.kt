@@ -6,7 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -18,10 +21,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private val prefs by lazy { getSharedPreferences("entregador", Context.MODE_PRIVATE) }
     private var tokenPendente: String? = null
+    private var pediuSempre = false
 
     companion object {
         const val SITE = "https://pedeaiapp.online"
         const val PEDIR_PERMISSOES = 1
+        const val PEDIR_LOCALIZACAO_SEMPRE = 2
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -67,7 +72,7 @@ class MainActivity : AppCompatActivity() {
     private fun temPermissao(p: String) =
         ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
 
-    // Pede localização e notificação; depois liga o serviço que envia a posição em segundo plano
+    // Pede localização e notificação; depois a permissão "o tempo todo"; depois tira o app da economia de bateria
     private fun pedeEInicia(token: String) {
         tokenPendente = token
         val faltam = mutableListOf<String>()
@@ -76,6 +81,22 @@ class MainActivity : AppCompatActivity() {
         if (faltam.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, faltam.toTypedArray(), PEDIR_PERMISSOES)
             return
+        }
+        if (Build.VERSION.SDK_INT >= 29 && !temPermissao(Manifest.permission.ACCESS_BACKGROUND_LOCATION) && !pediuSempre) {
+            pediuSempre = true
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), PEDIR_LOCALIZACAO_SEMPRE)
+            return
+        }
+        iniciaComBateria(token)
+    }
+
+    // Pede para tirar o app da economia de bateria, para o Android não parar o rastreamento
+    private fun iniciaComBateria(token: String) {
+        val pm = getSystemService(PowerManager::class.java)
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+            try {
+                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {}
         }
         iniciaServico(token)
     }
@@ -87,9 +108,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PEDIR_PERMISSOES) {
-            val token = tokenPendente
-            if (token != null && temPermissao(Manifest.permission.ACCESS_FINE_LOCATION)) iniciaServico(token)
+        val token = tokenPendente ?: return
+        when (requestCode) {
+            PEDIR_PERMISSOES -> if (temPermissao(Manifest.permission.ACCESS_FINE_LOCATION)) pedeEInicia(token)
+            PEDIR_LOCALIZACAO_SEMPRE -> iniciaComBateria(token)
         }
     }
 
