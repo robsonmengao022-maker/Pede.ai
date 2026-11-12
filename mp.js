@@ -7,7 +7,7 @@ const AUTH_URL = process.env.MP_AUTH_URL || 'https://auth.mercadopago.com.br';
 const CLIENT_ID = process.env.MP_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.MP_CLIENT_SECRET || '';
 const KEY = process.env.PEDEAI_KEY ? crypto.createHash('sha256').update(process.env.PEDEAI_KEY).digest() : null;
-const SITE = process.env.PUBLIC_URL || 'https://pede-ai-9aun.onrender.com';
+const SITE = process.env.PUBLIC_URL || 'https://pedeaiapp.online';
 const REDIRECT = SITE + '/api/mp/callback';
 const WEBHOOK = SITE + '/api/mercadopago/webhook';
 
