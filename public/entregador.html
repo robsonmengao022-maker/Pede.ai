@@ -71,20 +71,37 @@
     try { wake = await navigator.wakeLock.request('screen'); } catch {}
   }
 
-  function iniciar() {
+  // Guarda que as entregas estão ativas: ao abrir de novo a página, a localização volta sozinha
+  const CHAVE = 'pedeai_gps_' + token;
+  const ativo = () => { try { return localStorage.getItem(CHAVE) === '1'; } catch { return false; } };
+  const marca = v => { try { v ? localStorage.setItem(CHAVE, '1') : localStorage.removeItem(CHAVE); } catch {} };
+  let reinicio = null;
+
+  function ligaGps() {
     if (!navigator.geolocation) { $('sinal').textContent = 'Este celular não oferece localização no navegador.'; return; }
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     watchId = navigator.geolocation.watchPosition(
-      p => { ultimaPos = p; },
-      e => { $('sinal').textContent = 'Permita a localização para este site nas configurações do navegador. (' + e.message + ')'; },
+      p => { ultimaPos = p; if (reinicio) { clearTimeout(reinicio); reinicio = null; } },
+      e => {
+        if (e.code === 1) { $('sinal').textContent = 'Permita a localização para este site nas configurações do navegador.'; marca(false); return; }
+        $('sinal').textContent = e.code === 2 ? 'Ligue a localização (GPS) do celular. Tentando de novo...' : 'Sem sinal de GPS. Tentando de novo...';
+        if (!reinicio) reinicio = setTimeout(ligaGps, 5000);
+      },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
-    timer = setInterval(() => { if (ultimaPos) envia(ultimaPos); }, 10000);
+    if (!timer) timer = setInterval(() => { if (ultimaPos) envia(ultimaPos); }, 10000);
     $('btn').textContent = 'Entregas ativas ✓';
     $('btn').disabled = true;
     segurarTela();
   }
 
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && watchId !== null) segurarTela(); });
+  function iniciar() { marca(true); ligaGps(); }
+
+  // Quando o celular volta para esta página (tela ligada de novo, portão, troca de app), religa a localização
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && ativo()) ligaGps();
+  });
   $('btn').onclick = iniciar;
+  if (ativo()) { $('sinal').textContent = 'Retomando a localização...'; ligaGps(); }
   carrega();
   setInterval(carrega, 30000);
 </script>
