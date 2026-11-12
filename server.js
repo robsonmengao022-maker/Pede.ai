@@ -535,7 +535,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, fs.readFileSync(fp), { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
     }
     if (p === '/') return send(res, 200, page('index.html'), HTML);
-    if (p === '/painel') return send(res, 200, page('painel.html'), HTML);
+    if (p === '/painel' || p === '/cadastro') return send(res, 200, page('painel.html'), HTML);
     if (p === '/admin') return send(res, 200, page('admin.html'), HTML);
     if (/^\/(painel|painel2|loja)\.js$/.test(p)) return send(res, 200, page(p.slice(1)), { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
     if (/^\/(entregador|acompanhar)\/[a-f0-9]{24}$/.test(p)) return send(res, 200, page(p.split('/')[1] + '.html'), HTML);

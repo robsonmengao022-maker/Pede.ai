@@ -43,7 +43,7 @@ function showReset(step = 'mail', email = '') {
 }
 
 // ---------- Login / cadastro ----------
-function showAuth(mode = 'login') {
+function showAuth(mode = location.pathname === '/cadastro' ? 'signup' : 'login') {
   const signup = mode === 'signup';
   $('app').replaceChildren(h('div', { class: 'auth card' },
     h('h1', { style: 'margin:0 0 4px' }, 'Pedeaí'), h('p', { class: 'muted' }, signup ? 'Crie a conta da sua loja' : 'Entre no painel da sua loja'),
